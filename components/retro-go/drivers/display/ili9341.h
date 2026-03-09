@@ -20,6 +20,70 @@ static QueueHandle_t spi_buffers;
             spi_queue_transaction(&x, sizeof(x), 1); \
     }
 
+#include "driver/ledc.h"
+static bool backlight_pwm_initialized = false;
+#define BACKLIGHT_CHANNEL   LEDC_CHANNEL_1
+#define BACKLIGHT_TIMER     LEDC_TIMER_0
+
+static void backlight_init() {
+    if (backlight_pwm_initialized) return;
+    
+    // 1. 先把GPIO配置为普通输出，确保基础功能
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RG_GPIO_LCD_BCKL),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&io_conf);
+    
+    // 2. 测试基础开关（验证硬件）
+    gpio_set_level(RG_GPIO_LCD_BCKL, 1);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    gpio_set_level(RG_GPIO_LCD_BCKL, 0);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    
+    // 3. 配置PWM定时器 - 用更低频率
+    ledc_timer_config_t timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .timer_num = BACKLIGHT_TIMER,
+        .duty_resolution = LEDC_TIMER_8_BIT,  // 0-255
+        .freq_hz = 1000,                       // 1kHz 对S8050更友好
+        .clk_cfg = LEDC_AUTO_CLK
+    };
+    esp_err_t ret = ledc_timer_config(&timer);
+    if (ret != ESP_OK) {
+        printf("LEDC timer config failed: %d\n", ret);
+        return;
+    }
+    
+    // 4. 配置PWM通道
+    ledc_channel_config_t channel = {
+        .gpio_num = RG_GPIO_LCD_BCKL,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = BACKLIGHT_CHANNEL,
+        .timer_sel = BACKLIGHT_TIMER,
+        .duty = 255,                            // 初始100%
+        .hpoint = 0,
+        .flags.output_invert = 0                 // 不要反相
+    };
+    ret = ledc_channel_config(&channel);
+    if (ret != ESP_OK) {
+        printf("LEDC channel config failed: %d\n", ret);
+        return;
+    }
+    
+    backlight_pwm_initialized = true;
+    printf("Backlight PWM initialized on pin %d @ 1kHz\n", RG_GPIO_LCD_BCKL);
+}
+
+static void backlight_set(display_backlight_t brightness) {
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, BACKLIGHT_CHANNEL, brightness);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, BACKLIGHT_CHANNEL);
+    //printf("Backlight set to %d/255\n", brightness);
+}
+
 static inline uint16_t *spi_take_buffer(void)
 {
     uint16_t *buffer;
@@ -151,13 +215,14 @@ static void lcd_set_backlight(float percent)
     int error_code = 0;
 
 #if defined(RG_GPIO_LCD_BCKL)
-    error_code = ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0x1FFF * level, 50, 0);
+    //error_code = ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, 0x1FFF * level, 50, 0);
+    backlight_set((display_backlight_t)(level * 255));
 #endif
 
     if (error_code)
         RG_LOGE("failed setting backlight to %d%% (0x%02X)\n", (int)(100 * level), error_code);
     else
-        RG_LOGI("backlight set to %d%%\n", (int)(100 * level));
+        RG_LOGI("st7789s backlight set to %d%%\n", (int)(100 * level));
 }
 
 static void lcd_set_window(int left, int top, int width, int height)
@@ -245,6 +310,7 @@ static void lcd_init(void)
     ILI9341_CMD(0x11);    // Exit Sleep
     rg_usleep(10 * 1000); // Wait 10ms after sleep out
     ILI9341_CMD(0x29);    // Display on
+    backlight_init();
 }
 
 static void lcd_deinit(void)

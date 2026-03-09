@@ -28,19 +28,9 @@
     rg_usleep(120 * 1000);                                                                                          \
     ILI9341_CMD(0x36, 0x60);                                                                                        \
     ILI9341_CMD(0x3A, 0x05);                                                                                        \
-    ILI9341_CMD(0xB2, 0x1F, 0x1F, 0x00, 0x33, 0x33);                                                                \
-    ILI9341_CMD(0xB7, 0x12);                                                                                        \
-    ILI9341_CMD(0xBB, 0x66);                                                                                        \
-    ILI9341_CMD(0xC0, 0x2c);                 /* Power control   //VRH[5:0] */                                       \
-    ILI9341_CMD(0xC2, 0x01);                 /* Power control   //SAP[2:0];BT[3:0] */                               \
-    ILI9341_CMD(0xC3, 0x15);           /* VCM control */                                                            \
-    ILI9341_CMD(0xC4, 0x20);                 /* VCM control2 */                                                     \
-    ILI9341_CMD(0xC6, 0x13);                 /* Memory Access Control  (MX|MV|BGR) */                               \
-    ILI9341_CMD(0xD0, 0xA4, 0xA1);           /* Frame Rate Control (1B=70, 1F=61, 10=119) */                        \
-    ILI9341_CMD(0xD6, 0xA1);           /* Display Function Control */                                               \
-    ILI9341_CMD(0xE0, 0xF0,  0x06,  0x0D,  0x0B,  0x0A,  0x07,  0x2E,  0x43,  0x45,  0x38,  0x14,  0x13,  0x25,  0x29);                                                                               \
-    ILI9341_CMD(0xE1, 0xF0,  0x07,  0x0A,  0x08,  0x07,  0x23,  0x2E,  0x33,  0x44,  0x3A,  0x16,  0x17,  0x26,  0x2C);                 /* 3Gamma Function Disable */                                       \
-    ILI9341_CMD(0x21, 0x00);                 /* Gamma curve selected */                                             \
+    ILI9341_CMD(0xC0, 0x28);                 /* Power control   //VRH[5:0] */                                       \
+    ILI9341_CMD(0x20, 0x00);                 /* Gamma curve selected */                                             \
+    ILI9341_CMD(0x13, 0x00);                 /* Gamma curve selected */                                             \
     ILI9341_CMD(0x29, 0x00);                                                                                        \
     rg_usleep(50 * 1000);                                                                                           \
 
@@ -55,15 +45,15 @@
     {RG_KEY_LEFT, .num = GPIO_NUM_13, .pullup = 1, .level = 0},\
     {RG_KEY_RIGHT, .num = GPIO_NUM_14, .pullup = 1, .level = 0},\
     {RG_KEY_START,  .num = GPIO_NUM_21, .pullup = 1, .level = 0},\
-    {RG_KEY_OPTION,  .num = GPIO_NUM_47, .pullup = 1, .level = 0},\
-    {RG_KEY_X,      .num = GPIO_NUM_41, .pullup = 1, .level = 0},\
-    {RG_KEY_Y,      .num = GPIO_NUM_42, .pullup = 1, .level = 0},\
+    {RG_KEY_SELECT,  .num = GPIO_NUM_47, .pullup = 1, .level = 0},\
+    {RG_KEY_MENU,      .num = GPIO_NUM_41, .pullup = 1, .level = 0},\
+    {RG_KEY_OPTION,      .num = GPIO_NUM_42, .pullup = 1, .level = 0},\
     {RG_KEY_A,      .num = GPIO_NUM_0, .pullup = 1, .level = 0},\
     {RG_KEY_B,      .num = GPIO_NUM_48, .pullup = 1, .level = 0},\
 }
 
 // Battery
-#define RG_BATTERY_DRIVER           1
+#define RG_BATTERY_DRIVER           1  
 #define RG_BATTERY_ADC_UNIT         ADC_UNIT_1
 #define RG_BATTERY_ADC_CHANNEL      ADC_CHANNEL_3
 #define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3500.f) / (4200.f - 3500.f) * 100.f)
@@ -79,7 +69,7 @@
 #define RG_GPIO_LCD_CLK             GPIO_NUM_5
 #define RG_GPIO_LCD_CS              GPIO_NUM_15
 #define RG_GPIO_LCD_DC              GPIO_NUM_7
-#define RG_GPIO_LCD_BCKL            GPIO_NUM_NC
+#define RG_GPIO_LCD_BCKL            GPIO_NUM_4
 #define RG_GPIO_LCD_RST             GPIO_NUM_2
 
 #define RG_GPIO_SDSPI_MISO          GPIO_NUM_45
@@ -88,7 +78,9 @@
 #define RG_GPIO_SDSPI_CS            GPIO_NUM_40
 
 // External I2S DAC
-#define RG_GPIO_SND_I2S_BCK         41
-#define RG_GPIO_SND_I2S_WS          42
-#define RG_GPIO_SND_I2S_DATA        40
+#define RG_GPIO_SND_I2S_BCK         GPIO_NUM_8
+#define RG_GPIO_SND_I2S_WS          GPIO_NUM_3
+#define RG_GPIO_SND_I2S_DATA        GPIO_NUM_18
 // #define RG_GPIO_SND_AMP_ENABLE      18
+
+

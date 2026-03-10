@@ -164,9 +164,16 @@
 #endif
 
 #ifndef RG_LANG_DEFAULT
-#define RG_LANG_DEFAULT RG_LANG_EN
+#define RG_LANG_DEFAULT RG_LANG_CHS
 #endif
 
 #ifndef RG_FONT_DEFAULT
-#define RG_FONT_DEFAULT RG_FONT_VERA_11
+#define RG_FONT_DEFAULT RG_FONT_FUSIONPIXEL_12
 #endif
+
+#ifndef RG_FONT_CHINESE
+#define RG_FONT_CHINESE RG_FONT_FUSIONPIXEL_12
+#endif
+
+// Will be moved elsewhere, this is for testing
+#define RG_CHINESE_SUPPORT 1

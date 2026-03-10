@@ -130,6 +130,15 @@ void rg_gui_update_geometry(void)
 
 bool rg_gui_set_language_id(int index)
 {
+    if (index == RG_LANG_CHS)
+    {
+#if RG_CHINESE_SUPPORT
+        rg_gui_set_font(RG_FONT_CHINESE);
+#else
+        RG_LOGE("Chinese font not included, impossible to switch to Chinese!");
+        return false;
+#endif
+    }
     if (rg_localization_set_language_id(index))
     {
         rg_settings_set_number(NS_GLOBAL, SETTING_LANGUAGE, index);
@@ -232,6 +241,14 @@ bool rg_gui_set_font(int index)
 {
     if (index < 0 || index > RG_FONT_MAX - 1)
         return false;
+
+#if RG_CHINESE_SUPPORT
+    if (rg_localization_get_language_id() == RG_LANG_CHS && index != RG_FONT_CHINESE)
+    {
+        RG_LOGW("When the language is set to Chinese, only the Chinese font can be used!");
+        index = RG_FONT_CHINESE;
+    }
+#endif
 
     gui.font = fonts[index];
     gui.font_index = index;
@@ -706,7 +723,7 @@ rg_rect_t rg_gui_draw_dialog(const char *title, const rg_gui_option_t *options, 
         rg_rect_t label = TEXT_RECT(options[i].label, max_inner_width);
         rg_rect_t value = {0};
 
-        inner_width = RG_MAX(inner_width, label.width);
+            inner_width = RG_MAX(inner_width, label.width);
 
         if (options[i].value)
         {
@@ -748,12 +765,12 @@ rg_rect_t rg_gui_draw_dialog(const char *title, const rg_gui_option_t *options, 
 
     // Find top of page that contains selection
     for (int yy = y, i = 0; i <= sel && i < options_count; i++)
-    {
-        yy += row_height[i];
-        if (yy >= box_y + box_height)
         {
-            if (sel < i)
-                break;
+            yy += row_height[i];
+            if (yy >= box_y + box_height)
+            {
+                if (sel < i)
+                    break;
             yy = y + row_height[i];
             list_top_i = i;
         }
@@ -895,7 +912,7 @@ intptr_t rg_gui_dialog(const char *title, const rg_gui_option_t *options_const, 
             option->value = strcpy(text_buffer_ptr, option->value);
             option->update_cb(option, RG_DIALOG_INIT);
             text_buffer_ptr += RG_MAX(strlen(text_buffer_ptr), 31) + 1;
-        }
+    }
     }
 
     if (selected_index < 0)
@@ -1713,6 +1730,7 @@ static rg_gui_event_t language_cb(rg_gui_option_t *option, rg_gui_event_t event)
 
     if (event == RG_DIALOG_ENTER)
     {
+        // FIXME: Hide languages that can't be displayed because of a missing font (eg Chinese)
         rg_gui_option_t options[RG_LANG_MAX + 1];
         for (int i = 0; i < RG_LANG_MAX; i++)
             options[i] = (rg_gui_option_t){i, rg_localization_get_language_name(i), NULL, RG_DIALOG_FLAG_NORMAL, NULL};

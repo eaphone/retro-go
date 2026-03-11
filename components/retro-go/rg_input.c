@@ -49,6 +49,10 @@ static bool input_task_running = false;
 static uint32_t gamepad_state = -1; // _Atomic
 static uint32_t gamepad_mapped = 0;
 static rg_battery_t battery_state = {0};
+#define SMOOTH_COUNT 30
+static float smooth_level[SMOOTH_COUNT] = {0};
+static float smooth_vol[SMOOTH_COUNT] = {0};
+static int8_t smooth_index=SMOOTH_COUNT;
 
 #define UPDATE_GLOBAL_MAP(keymap)                 \
     for (size_t i = 0; i < RG_COUNT(keymap); ++i) \
@@ -340,6 +344,27 @@ static void input_task(void *arg)
                 if (fabsf(battery_state.volts - temp.volts) < RG_BATTERY_UPDATE_THRESHOLD_VOLT)
                     temp.volts = battery_state.volts;
             }
+            if(smooth_index<SMOOTH_COUNT-1){
+                smooth_level[smooth_index]=temp.level;
+                smooth_vol[smooth_index]=temp.volts;
+                smooth_index++;
+            }else{
+                if(smooth_index>SMOOTH_COUNT-1){
+                    for(int i=0;i<SMOOTH_COUNT;i++){
+                        smooth_level[i]=temp.level;
+                        smooth_vol[i]=temp.volts;
+                    }
+                }
+                smooth_index=0;
+            }
+            float level=smooth_level[0];
+            float vol=smooth_vol[0];
+            for(int i=1;i<SMOOTH_COUNT;i++){
+                level+=smooth_level[i];
+                vol+=smooth_vol[i];
+            }
+            temp.level=level/SMOOTH_COUNT;
+            temp.volts=vol/SMOOTH_COUNT;
             battery_state = temp;
             next_battery_update = rg_system_timer() + 2 * 1000000; // update every 2 seconds
         }

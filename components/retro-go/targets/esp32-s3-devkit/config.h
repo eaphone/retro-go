@@ -101,7 +101,7 @@
 #define RG_BATTERY_DRIVER           1  
 #define RG_BATTERY_ADC_UNIT         ADC_UNIT_2
 #define RG_BATTERY_ADC_CHANNEL      ADC_CHANNEL_5
-#define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 2500.f) / (4200.f - 2500.f) * 100.f)
+#define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3000.f) / (4000.f - 3000.f) * 100.f)
 #define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 2.f * 0.001f)
 
 

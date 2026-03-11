@@ -2192,11 +2192,8 @@ void rg_gui_debug_menu(void)
     snprintf(uptime, 20, "%ds", stats.uptime);
     snprintf(overclock, 20, "%d (%dMhz)", rg_system_get_overclock(), rg_system_get_cpu_speed());
 
-    rg_battery_t battery;
-    if (rg_input_read_battery_raw(&battery))
-        snprintf(battery_info, sizeof(battery_info), "%.2f%% | %.2fV", battery.level, battery.volts);
-    else
-        snprintf(battery_info, sizeof(battery_info), "N/A");
+    rg_battery_t battery=rg_input_read_battery();
+    snprintf(battery_info, sizeof(battery_info), "%.2f%% | %.2fV", battery.level, battery.volts);
 
     rg_network_t net = rg_network_get_info();
     if (net.state == RG_NETWORK_DISABLED)

@@ -505,7 +505,11 @@ rg_app_t *rg_system_init(const rg_config_t *config)
     app.indicatorsMask = rg_settings_get_number(NS_GLOBAL, SETTING_INDICATOR_MASK, app.indicatorsMask);
     app.romPath = app.bootArgs ?: ""; // For whatever reason some of our code isn't NULL-aware, sigh..
 
-    rg_gui_draw_hourglass();
+    if(app.isColdBoot){
+        rg_gui_draw_logo();
+    }else{
+        rg_gui_draw_hourglass();
+    }
 
     if (config)
     {

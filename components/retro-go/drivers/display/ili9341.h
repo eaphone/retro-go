@@ -24,8 +24,8 @@ static QueueHandle_t spi_buffers;
     }
 
 static void backlight_set(display_backlight_t brightness) {
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, BACKLIGHT_CHANNEL, brightness);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, BACKLIGHT_CHANNEL);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, brightness);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
     //printf("Backlight set to %d/255\n", brightness);
 }
 
@@ -223,7 +223,7 @@ static void lcd_init(void)
         .duty = 0,
     #ifdef RG_GPIO_LCD_BCKL_INVERT
         .flags.output_invert = 1,
-        #endif
+    #endif
     });
     ledc_fade_func_install(0);
 #endif

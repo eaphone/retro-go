@@ -8,8 +8,10 @@
 #include <sys/time.h>
 #include <time.h>
 
-#include "bitmaps/image_hourglass.h"
+#include "bitmaps/image_lionstdio.h"
 #include "fonts/fonts.h"
+
+#define DEFAULT_LOGO image_lionstdio
 
 static struct
 {
@@ -635,15 +637,16 @@ void rg_gui_draw_icons(void)
     }
 }
 
+// boot logo
 void rg_gui_draw_hourglass(void)
 {
     rg_display_write_rect(
-        get_horizontal_position(RG_GUI_CENTER, image_hourglass.width),
-        get_vertical_position(RG_GUI_CENTER, image_hourglass.height),
-        image_hourglass.width,
-        image_hourglass.height,
-        image_hourglass.width * 2,
-        (uint16_t*)image_hourglass.pixel_data, 0);
+        get_horizontal_position(RG_GUI_CENTER, DEFAULT_LOGO.width),
+        get_vertical_position(RG_GUI_CENTER, DEFAULT_LOGO.height),
+        DEFAULT_LOGO.width,
+        DEFAULT_LOGO.height,
+        DEFAULT_LOGO.width * 2,
+        (uint16_t*)DEFAULT_LOGO.pixel_data, 0);
 }
 
 void rg_gui_draw_status_bars(void)

@@ -506,7 +506,11 @@ rg_app_t *rg_system_init(int sampleRate, const rg_handlers_t *handlers, void *_u
     app.saveSlot = (app.bootFlags & RG_BOOT_SLOT_MASK) >> 4;
     app.romPath = app.bootArgs ?: ""; // For whatever reason some of our code isn't NULL-aware, sigh..
 
-    rg_gui_draw_hourglass();
+    if(app.isColdBoot){
+        rg_gui_draw_logo();
+    }else{
+        rg_gui_draw_hourglass();
+    }
     rg_audio_init(sampleRate);
 
     rg_system_set_timezone(rg_settings_get_string(NS_GLOBAL, SETTING_TIMEZONE, "EST+5"));

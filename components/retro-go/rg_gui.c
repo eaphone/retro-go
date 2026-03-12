@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include "bitmaps/image_hourglass.h"
 #include "bitmaps/image_lionstdio.h"
 #include "fonts/fonts.h"
 
@@ -637,9 +638,18 @@ void rg_gui_draw_icons(void)
     }
 }
 
+void rg_gui_draw_hourglass(void){
+    rg_display_write_rect(
+        get_horizontal_position(RG_GUI_CENTER, image_hourglass.width),
+        get_vertical_position(RG_GUI_CENTER, image_hourglass.height),
+        image_hourglass.width,
+        image_hourglass.height,
+        image_hourglass.width * 2,
+        (uint16_t*)image_hourglass.pixel_data, 0);
+}
+
 // boot logo
-void rg_gui_draw_hourglass(void)
-{
+void rg_gui_draw_logo(void){
     rg_display_write_rect(
         get_horizontal_position(RG_GUI_CENTER, DEFAULT_LOGO.width),
         get_vertical_position(RG_GUI_CENTER, DEFAULT_LOGO.height),

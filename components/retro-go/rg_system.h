@@ -35,6 +35,7 @@ extern "C" {
 #include "rg_i2c.h"
 #include "rg_utils.h"
 
+#define RG_ENABLE_NETPLAY
 #ifdef RG_ENABLE_NETPLAY
 #include "rg_netplay.h"
 #endif

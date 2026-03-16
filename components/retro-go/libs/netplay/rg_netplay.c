@@ -1,4 +1,3 @@
-#ifdef RG_ENABLE_NETPLAY
 
 #include <freertos/FreeRTOS.h>
 #include <lwip/ip_addr.h>
@@ -73,7 +72,7 @@ static void network_setup(tcpip_adapter_if_t tcpip_if)
     local_player = &players[player_id];
     local_player->id = player_id;
     local_player->version = NETPLAY_VERSION;
-    local_player->game_id = rg_system_get_app()->romCRC32;
+    local_player->game_id = rg_system_get_app()->indicatorsMask;
     local_player->ip_addr = local_if.ip.addr;
 
     RG_LOGI("netplay: Local player ID: %d\n", local_player->id);
@@ -345,7 +344,7 @@ static void netplay_init()
         ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE)); // Improves latency a lot
         ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
 
-        rg_task_create("rg_netplay", &netplay_task, NULL, 4096, RG_TASK_PRIORITY - 2, 1);
+        rg_task_create("rg_netplay", &netplay_task, NULL, 4096, RG_TASK_PRIORITY_8 - 2, 1);
     }
 }
 
@@ -417,7 +416,7 @@ bool rg_netplay_quick_start(void)
         if (screen_msg != status_msg)
         {
             rg_display_clear(0);
-            rg_gui_draw_dialog(status_msg, NULL, 0);
+            rg_gui_draw_message(status_msg);
             screen_msg = status_msg;
         }
 
@@ -582,5 +581,3 @@ netplay_status_t rg_netplay_status()
 {
     return netplay_status;
 }
-
-#endif

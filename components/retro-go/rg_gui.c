@@ -990,8 +990,6 @@ intptr_t rg_gui_dialog(const char *title, const rg_gui_option_t *options_const, 
                 // If the item is selectable, we stop here
                 if (options[sel].flags == RG_DIALOG_FLAG_NORMAL)
                     break;
-                if (options[sel].flags == RG_DIALOG_FLAG_DISABLED)
-                    break;
 
                 // Otherwise move to the next
                 sel += (joystick == RG_KEY_UP) ? -1 : 1;
@@ -2302,15 +2300,19 @@ int rg_gui_savestate_menu(const char *title, const char *rom_path)
 
 void rg_gui_game_menu(void)
 {
+    
     const char *rom_path = rg_system_get_app()->romPath;
     bool have_option_btn = rg_input_key_is_present(RG_KEY_OPTION);
+    #ifdef RG_ENABLE_NETPLAY
+    rg_network_t network = rg_network_get_info();
+    #endif
     const rg_gui_option_t choices[] = {
         {1000, _("Save & Continue"), NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         {2000, _("Save & Quit"),     NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         {3001, _("Load game"),       NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         {3000, _("Reset"),           NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         #ifdef RG_ENABLE_NETPLAY
-        {5000, _("Netplay"),         NULL, RG_DIALOG_FLAG_NORMAL, NULL},
+        {5000, _("Netplay"),         NULL, network.state == RG_NETWORK_CONNECTED ? RG_DIALOG_FLAG_NORMAL : RG_DIALOG_FLAG_DISABLED, NULL},
         #endif
         {5500, _("Options"),         NULL, have_option_btn ? RG_DIALOG_FLAG_HIDDEN : RG_DIALOG_FLAG_NORMAL, NULL},
         {6000, _("About"),           NULL, RG_DIALOG_FLAG_NORMAL, NULL},

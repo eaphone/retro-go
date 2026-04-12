@@ -27,18 +27,12 @@
 #define RG_STORAGE_ROOT             "/sd"
 #define RG_STORAGE_SDSPI_HOST       SPI3_HOST
 #define RG_STORAGE_SDSPI_SPEED      SDMMC_FREQ_DEFAULT
-#define RG_GPIO_SDSPI_MISO          GPIO_NUM_9
-#define RG_GPIO_SDSPI_MOSI          GPIO_NUM_11
-#define RG_GPIO_SDSPI_CLK           GPIO_NUM_13
-#define RG_GPIO_SDSPI_CS            GPIO_NUM_10
+#define RG_GPIO_SDSPI_MISO          GPIO_NUM_45
+#define RG_GPIO_SDSPI_MOSI          GPIO_NUM_39
+#define RG_GPIO_SDSPI_CLK           GPIO_NUM_38
+#define RG_GPIO_SDSPI_CS            GPIO_NUM_40
 // #define RG_STORAGE_SDMMC_HOST       SDMMC_HOST_SLOT_1
 // #define RG_STORAGE_SDMMC_SPEED      SDMMC_FREQ_DEFAULT
-// #define RG_GPIO_SDMMC_CMD           GPIO_NUM_15
-// #define RG_GPIO_SDMMC_CLK           GPIO_NUM_14
-// #define RG_GPIO_SDMMC_D0            GPIO_NUM_2
-// #define RG_GPIO_SDMMC_D1            GPIO_NUM_NC
-// #define RG_GPIO_SDMMC_D2            GPIO_NUM_NC
-// #define RG_GPIO_SDMMC_D3            GPIO_NUM_NC
 // #define RG_STORAGE_FLASH_PARTITION  "vfs"
 
 
@@ -48,18 +42,16 @@
 #define RG_AUDIO_USE_INT_DAC        0   // 0 = Disable, 1 = GPIO25, 2 = GPIO26, 3 = Both
 #define RG_AUDIO_USE_EXT_DAC        1   // 0 = Disable, 1 = Enable
 #define RG_AUDIO_USE_BUZZER_PIN     0   // See drivers/audio/buzzer.c for details
-#define RG_GPIO_SND_I2S_BCK         GPIO_NUM_41
-#define RG_GPIO_SND_I2S_WS          GPIO_NUM_42
-#define RG_GPIO_SND_I2S_DATA        GPIO_NUM_40
-// #define RG_GPIO_SND_AMP_ENABLE      GPIO_NUM_18
-
+#define RG_GPIO_SND_I2S_BCK         GPIO_NUM_8
+#define RG_GPIO_SND_I2S_WS          GPIO_NUM_3
+#define RG_GPIO_SND_I2S_DATA        GPIO_NUM_18
 
 /****************************************************************************
  * Video                                                                    *
  ****************************************************************************/
 #define RG_SCREEN_DRIVER            0   // 0 = ILI9341/ST7789
 #define RG_SCREEN_HOST              SPI2_HOST
-#define RG_SCREEN_SPEED             SPI_MASTER_FREQ_40M
+#define RG_SCREEN_SPEED             SPI_MASTER_FREQ_40M // SPI_MASTER_FREQ_80M
 #define RG_SCREEN_BACKLIGHT         1
 #define RG_SCREEN_WIDTH             320
 #define RG_SCREEN_HEIGHT            240
@@ -117,15 +109,10 @@
 #define RG_GPIO_LCD_BCKL            GPIO_NUM_4
 #define RG_GPIO_LCD_RST             GPIO_NUM_2
 
-#define RG_GPIO_SDSPI_MISO          GPIO_NUM_45
-#define RG_GPIO_SDSPI_MOSI          GPIO_NUM_39
-#define RG_GPIO_SDSPI_CLK           GPIO_NUM_38
-#define RG_GPIO_SDSPI_CS            GPIO_NUM_40
-
-// External I2S DAC
-#define RG_GPIO_SND_I2S_BCK         GPIO_NUM_8
-#define RG_GPIO_SND_I2S_WS          GPIO_NUM_3
-#define RG_GPIO_SND_I2S_DATA        GPIO_NUM_18
 // #define RG_GPIO_SND_AMP_ENABLE      18
 
-
+#define RG_NET_SCK                  GPIO_NUM_1
+#define RG_NET_CS                   GPIO_NUM_17
+#define RG_NET_MOSI                 GPIO_NUM_9
+#define RG_NET_MISO                 GPIO_NUM_10
+#define RG_NET_HS                   GPIO_NUM_44

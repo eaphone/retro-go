@@ -45,10 +45,21 @@
 #define RG_GPIO_SND_I2S_BCK         GPIO_NUM_8
 #define RG_GPIO_SND_I2S_WS          GPIO_NUM_3
 #define RG_GPIO_SND_I2S_DATA        GPIO_NUM_18
+// #define RG_GPIO_SND_AMP_ENABLE      18
 
 /****************************************************************************
  * Video                                                                    *
  ****************************************************************************/
+
+// SPI Display (back up working)
+#define RG_GPIO_LCD_MISO            GPIO_NUM_NC
+#define RG_GPIO_LCD_MOSI            GPIO_NUM_6
+#define RG_GPIO_LCD_CLK             GPIO_NUM_5
+#define RG_GPIO_LCD_CS              GPIO_NUM_15
+#define RG_GPIO_LCD_DC              GPIO_NUM_7
+#define RG_GPIO_LCD_BCKL            GPIO_NUM_4
+#define RG_GPIO_LCD_RST             GPIO_NUM_2
+
 #define RG_SCREEN_DRIVER            0   // 0 = ILI9341/ST7789
 #define RG_SCREEN_HOST              SPI2_HOST
 #define RG_SCREEN_SPEED             SPI_MASTER_FREQ_40M // SPI_MASTER_FREQ_80M
@@ -89,28 +100,18 @@
     {RG_KEY_B,      .num = GPIO_NUM_48, .pullup = 1, .level = 0},\
 }
 
-// Battery
+/****************************************************************************
+ * Battery                                                                  *
+ ****************************************************************************/
 #define RG_BATTERY_DRIVER           1  
 #define RG_BATTERY_ADC_UNIT         ADC_UNIT_2
 #define RG_BATTERY_ADC_CHANNEL      ADC_CHANNEL_5
 #define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3200.f) / (4000.f - 3200.f) * 100.f)
 #define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 2.f * 0.001f)
 
-
-// Status LED
-#define RG_GPIO_LED                 GPIO_NUM_NC
-
-// SPI Display (back up working)
-#define RG_GPIO_LCD_MISO            GPIO_NUM_NC
-#define RG_GPIO_LCD_MOSI            GPIO_NUM_6
-#define RG_GPIO_LCD_CLK             GPIO_NUM_5
-#define RG_GPIO_LCD_CS              GPIO_NUM_15
-#define RG_GPIO_LCD_DC              GPIO_NUM_7
-#define RG_GPIO_LCD_BCKL            GPIO_NUM_4
-#define RG_GPIO_LCD_RST             GPIO_NUM_2
-
-// #define RG_GPIO_SND_AMP_ENABLE      18
-
+/****************************************************************************
+ * Net                                                                      *
+ ****************************************************************************/
 #define RG_NET_SCK                  GPIO_NUM_1
 #define RG_NET_CS                   GPIO_NUM_17
 #define RG_NET_MOSI                 GPIO_NUM_9

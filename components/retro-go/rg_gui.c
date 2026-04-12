@@ -2312,7 +2312,7 @@ void rg_gui_game_menu(void)
         {3001, _("Load game"),       NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         {3000, _("Reset"),           NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         #ifdef RG_ENABLE_NETPLAY
-        {5000, _("Netplay"),         NULL, network.state == RG_NETWORK_CONNECTED ? RG_DIALOG_FLAG_NORMAL : RG_DIALOG_FLAG_DISABLED, NULL},
+        {5000, _("Netplay"),         NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         #endif
         {5500, _("Options"),         NULL, have_option_btn ? RG_DIALOG_FLAG_HIDDEN : RG_DIALOG_FLAG_NORMAL, NULL},
         {6000, _("About"),           NULL, RG_DIALOG_FLAG_NORMAL, NULL},

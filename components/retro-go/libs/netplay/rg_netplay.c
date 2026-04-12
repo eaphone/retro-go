@@ -1,5 +1,6 @@
 
 #include <freertos/FreeRTOS.h>
+#include <driver/spi_master.h>
 #include <lwip/ip_addr.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -11,9 +12,11 @@
 #include <unistd.h>
 #include <assert.h>
 #include <netdb.h>
+#include <nvs_flash.h>
 
 #include "rg_system.h"
 #include "rg_netplay.h"
+#include "rg_network.h"
 
 #define NETPLAY_VERSION 0x01
 #define MAX_PLAYERS 8
@@ -332,19 +335,28 @@ static void netplay_init()
         netplay_callback = netplay_callback ?: dummy_netplay_callback;
         netplay_mode = NETPLAY_MODE_NONE;
         netplay_sync = xSemaphoreCreateMutex();
+        
+        // Init event loop first
+        ESP_ERROR_CHECK(esp_event_loop_create_default());
+        ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
+        ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
 
-        tcpip_adapter_init();
+        heap_caps_malloc(1, MALLOC_CAP_INTERNAL);
 
-        esp_event_loop_create_default();
+        // Then TCP stack
+        ESP_ERROR_CHECK(esp_netif_init());
+
+        // Wifi may use nvs for calibration data
+        if (nvs_flash_init() != ESP_OK && nvs_flash_erase() == ESP_OK)
+            nvs_flash_init();
 
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-        ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-        ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
         ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE)); // Improves latency a lot
         ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
 
         rg_task_create("rg_netplay", &netplay_task, NULL, 4096, RG_TASK_PRIORITY_8 - 2, 1);
+        RG_LOGI("%s done.\n", __func__);
     }
 }
 
@@ -581,3 +593,144 @@ netplay_status_t rg_netplay_status()
 {
     return netplay_status;
 }
+
+//spi_device_handle_t spi_handle;
+//
+//void spi_sender_init(void) {
+//    // 配置SPI总线
+//    spi_bus_config_t buscfg = {
+//        .mosi_io_num = RG_NET_MOSI,
+//        .miso_io_num = RG_NET_MISO,
+//        .sclk_io_num = RG_NET_SCK,
+//        .quadwp_io_num = -1,
+//        .quadhd_io_num = -1,
+//        .max_transfer_sz = 160 * 1024  // 160KB缓冲区
+//    };
+//    
+//    // 配置SPI设备（双线模式）
+//    spi_device_interface_config_t devcfg = {
+//        .mode = 0,
+//        .clock_speed_hz = 40 * 1000 * 1000,  // 40MHz（稳妥选择）
+//        .spics_io_num = RG_NET_CS,
+//        .queue_size = 2,
+//        .flags = SPI_DEVICE_HALFDUPLEX,      // 半双工模式
+//        .pre_cb = NULL,
+//        .post_cb = NULL,
+//    };
+//    
+//    // 初始化SPI总线（使用DMA）
+//    spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO);
+//    spi_bus_add_device(SPI2_HOST, &devcfg, &spi_handle);
+//    
+//    // 配置握手引脚
+//    gpio_config_t io_conf = {
+//        .pin_bit_mask = (1ULL << RG_NET),
+//        .mode = GPIO_MODE_OUTPUT,
+//        .pull_up_en = GPIO_PULLUP_DISABLE,
+//        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+//        .intr_type = GPIO_INTR_DISABLE
+//    };
+//    gpio_config(&io_conf);
+//    gpio_set_level(RG_NET_HS, 0);  // 初始低电平
+//}
+//
+//// ===== 接收端初始化（从机模式）=====
+//void spi_receiver_init(void) {
+//    // 注意：接收端不需要释放UART0，因为没用到GPIO43
+//    
+//    // 配置SPI总线（与发送端相同引脚）
+//    spi_bus_config_t buscfg = {
+//        .mosi_io_num = RG_NET_MOSI,
+//        .miso_io_num = RG_NET_MISO,
+//        .sclk_io_num = RG_NET_SCK,
+//        .quadwp_io_num = -1,
+//        .quadhd_io_num = -1,
+//        .max_transfer_sz = 160 * 1024
+//    };
+//    
+//    // 从机模式配置
+//    spi_slave_interface_config_t slvcfg = {
+//        .spics_io_num = RG_NET_CS,
+//        .flags = 0,
+//        .queue_size = 2,
+//        .mode = 0,
+//        .post_setup_cb = NULL,
+//        .post_trans_cb = NULL
+//    };
+//    
+//    // 初始化为从机模式
+//    spi_slave_initialize(SPI2_HOST, &buscfg, &slvcfg, SPI_DMA_CH_AUTO);
+//    
+//    // 配置就绪引脚（告诉主机可以发送）
+//    gpio_config_t io_conf = {
+//        .pin_bit_mask = (1ULL << RG_NET_HS),
+//        .mode = GPIO_MODE_INPUT_OUTPUT,  // 双向模式
+//        .pull_up_en = GPIO_PULLUP_DISABLE,
+//        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+//        .intr_type = GPIO_INTR_POSEDGE    // 上升沿中断
+//    };
+//    gpio_config(&io_conf);
+//    gpio_set_level(RG_NET_HS, 0);  // 初始低电平
+//}
+//
+//// ===== 发送一帧数据（带握手优化）=====
+//void spi_send_frame(uint8_t *data, size_t len) {
+//    spi_transaction_t trans = {
+//        .length = len * 8,
+//        .tx_buffer = data,
+//        .rx_buffer = NULL,
+//        .flags = 0
+//    };
+//    
+//    // 1. 拉高握手线，通知从机准备接收
+//    gpio_set_level(RG_NET_HS, 1);
+//    
+//    // 2. 等待从机就绪（从机会将同一根线拉高作为响应）
+//    //    超时机制防止死锁
+//    int timeout = 1000;  // 1000次循环 ≈ 10ms
+//    while (gpio_get_level(RG_NET_HS) == 0 && timeout-- > 0) {
+//        esp_rom_delay_us(10);  // 10微秒延时
+//    }
+//    
+//    if (timeout <= 0) {
+//        // 从机无响应，放弃本次传输
+//        gpio_set_level(RG_NET_HS, 0);
+//        return;
+//    }
+//    
+//    // 3. 启动SPI DMA传输
+//    spi_device_queue_trans(spi_handle, &trans, portMAX_DELAY);
+//    
+//    // 4. 等待传输完成
+//    spi_transaction_t *ret_trans;
+//    spi_device_get_trans_result(spi_handle, &ret_trans, portMAX_DELAY);
+//    
+//    // 5. 传输完成，拉低握手线
+//    gpio_set_level(RG_NET_HS, 0);
+//}
+//
+//// ===== 接收一帧数据（从机）=====
+//void spi_receive_frame(uint8_t *buffer, size_t len) {
+//    spi_slave_transaction_t trans = {
+//        .length = len * 8,
+//        .tx_buffer = NULL,
+//        .rx_buffer = buffer,
+//    };
+//    
+//    // 1. 等待主机拉高握手线（表示有数据要发）
+//    while (gpio_get_level(RG_NET_HS) == 0) {
+//        taskYIELD();  // 让出CPU
+//    }
+//    
+//    // 2. 拉高同一根线，表示自己已就绪
+//    gpio_set_level(RG_NET_HS, 1);
+//    
+//    // 3. 等待SPI传输（阻塞）
+//    spi_slave_transmit(SPI2_HOST, &trans, portMAX_DELAY);
+//    
+//    // 4. 接收完成，拉低握手线
+//    gpio_set_level(RG_NET_HS, 0);
+//    
+//    // 5. 显示画面
+//    lcd_write_frame(buffer, len);
+//}

@@ -83,4 +83,8 @@
 #define RG_GPIO_SND_I2S_DATA        GPIO_NUM_18
 // #define RG_GPIO_SND_AMP_ENABLE      18
 
-
+#define RG_NET_SCK                  GPIO_NUM_1
+#define RG_NET_CS                   GPIO_NUM_17
+#define RG_NET_MOSI                 GPIO_NUM_9
+#define RG_NET_MISO                 GPIO_NUM_10
+#define RG_NET_HS                   GPIO_NUM_44

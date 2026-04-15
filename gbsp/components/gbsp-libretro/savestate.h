@@ -93,7 +93,7 @@ bool bson_read_int32_array(const u8 *srcp, const char *key, u32* value, unsigned
 bool bson_read_bytes(const u8 *srcp, const char *key, void* buffer, unsigned cnt);
 
 /* this is an upper limit, leave room for future (?) stuff */
-#define GBA_STATE_MEM_SIZE                    (416*1024)
+#define GBA_STATE_MEM_SIZE                    (398418)
 #define GBA_STATE_MAGIC                       0x06BAC0DE
 #define GBA_STATE_VERSION                     0x00010004
 

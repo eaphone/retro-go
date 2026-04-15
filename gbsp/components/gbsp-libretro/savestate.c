@@ -125,15 +125,17 @@ bool gba_load_state(const void* src)
   if (!cpu_check_savestate(srcptr) ||
       !input_check_savestate(srcptr) ||
       !main_check_savestate(srcptr) ||
-      !memory_check_savestate(srcptr) ||
-      !sound_check_savestate(srcptr))
+      !memory_check_savestate(srcptr) 
+      //||!sound_check_savestate(srcptr)
+    )
      return false;
 
   if (!(cpu_read_savestate(srcptr) &&
       input_read_savestate(srcptr) &&
       main_read_savestate(srcptr) &&
-      memory_read_savestate(srcptr) &&
-      sound_read_savestate(srcptr)))
+      memory_read_savestate(srcptr) 
+      //&&sound_read_savestate(srcptr)
+    ))
   {
      // TODO: this should not happen if the validation above is accurate.
      return false;
@@ -175,21 +177,21 @@ void gba_save_state(void* dst)
   wrptr += input_write_savestate(wrptr);
   wrptr += main_write_savestate(wrptr);
   wrptr += memory_write_savestate(wrptr);
-  wrptr += sound_write_savestate(wrptr);
-
+  //wrptr += sound_write_savestate(wrptr);
+  
   // The padding space is pushed into a padding field for easy parsing
-  {
-    unsigned padsize = GBA_STATE_MEM_SIZE - (wrptr - stptr);
-    padsize -= 1 + 9 + 4 + 1 + 1;
-    *wrptr++ = 0x05;    // Byte array
-    bson_write_cstring(wrptr, "zpadding");
-    bson_write_u32(wrptr, padsize);
-    *wrptr++ = 0;
-    wrptr += padsize;
-  }
+  //{
+  //  unsigned padsize = GBA_STATE_MEM_SIZE - (wrptr - stptr);
+  //  padsize -= 1 + 9 + 4 + 1 + 1;
+  //  *wrptr++ = 0x05;    // Byte array
+  //  bson_write_cstring(wrptr, "zpadding");
+  //  bson_write_u32(wrptr, padsize);
+  //  *wrptr++ = 0;
+  //  wrptr += padsize;
+  //}
 
   *wrptr++ = 0;
-
+  
   // Update the doc size  
   bson_write_u32(stptr, wrptr - stptr);
 }

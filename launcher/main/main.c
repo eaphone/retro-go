@@ -463,7 +463,7 @@ void app_main(void)
     app = rg_system_init(&(const rg_config_t){
         .sampleRate = 32000,
         .frameRate = 0,
-        .storageRequired = true,
+        .storageRequired = false,
         .isLauncher = true,
         .handlers.event = &event_handler,
         .handlers.options = &options_handler,

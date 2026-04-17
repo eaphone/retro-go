@@ -382,6 +382,8 @@ static void event_handler(int event, void *arg)
     if (event == RG_EVENT_REDRAW)
     {
         SubmitFrame();
+    }else {
+        RG_LOGI("Event: %d\n", event);
     }
 }
 

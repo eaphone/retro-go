@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <netdb.h>
+#include <nvs_flash.h>
 
 #include "rg_system.h"
 #include "rg_netplay.h"
@@ -23,7 +24,7 @@
 
 // The SSID should be randomized to avoid conflicts
 #define WIFI_SSID "RETRO-GO"
-#define WIFI_CHANNEL 12
+#define WIFI_CHANNEL 6
 #define WIFI_BROADCAST_ADDR "192.168.4.255"
 #define WIFI_NETPLAY_PORT 1234
 
@@ -40,7 +41,8 @@ static netplay_player_t players[MAX_PLAYERS];
 static netplay_player_t *local_player;
 static netplay_player_t *remote_player; // This only works in 2 player mode
 
-static tcpip_adapter_ip_info_t local_if;
+static esp_netif_ip_info_t local_if;
+static esp_netif_t *netif_sta, *netif_ap, *netif;
 static wifi_config_t wifi_config;
 
 static int rx_sock, tx_sock;
@@ -48,7 +50,7 @@ static int rx_sock, tx_sock;
 
 static void dummy_netplay_callback(netplay_event_t event, void *arg)
 {
-    RG_LOGI("...\n");
+    //RG_LOGI("...\n");
 }
 
 
@@ -62,9 +64,9 @@ static void network_cleanup()
 }
 
 
-static void network_setup(tcpip_adapter_if_t tcpip_if)
+static void network_setup(esp_netif_t * tcpip_if)
 {
-    tcpip_adapter_get_ip_info(tcpip_if, &local_if);
+    esp_netif_get_ip_info(tcpip_if, &local_if);
 
     int player_id = ((local_if.ip.addr >> 24) & 0xF) - 1;
     struct sockaddr_in rx_addr;
@@ -73,7 +75,7 @@ static void network_setup(tcpip_adapter_if_t tcpip_if)
     local_player = &players[player_id];
     local_player->id = player_id;
     local_player->version = NETPLAY_VERSION;
-    local_player->game_id = rg_system_get_app()->romCRC32;
+    local_player->game_id = rg_system_get_app()->bootFlags;
     local_player->ip_addr = local_if.ip.addr;
 
     RG_LOGI("netplay: Local player ID: %d\n", local_player->id);
@@ -168,7 +170,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
     {
         if (event_id == WIFI_EVENT_AP_START)
         {
-            network_setup(TCPIP_ADAPTER_IF_AP);
+            network_setup(netif_ap);
             set_status(NETPLAY_STATUS_LISTENING);
         }
         else if (event_id == WIFI_EVENT_AP_STOP || event_id == WIFI_EVENT_STA_STOP)
@@ -188,7 +190,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
     {
         if (event_id == IP_EVENT_STA_GOT_IP)
         {
-            network_setup(TCPIP_ADAPTER_IF_STA);
+            network_setup(netif_sta);
             set_status(NETPLAY_STATUS_HANDSHAKE);
         }
         else if (event_id == IP_EVENT_AP_STAIPASSIGNED)
@@ -267,7 +269,7 @@ static void netplay_task()
                 remote_player = packet_from;
 
                 RG_LOGI("netplay: Remote client info player_id=%d game_id=%08X version=%02X\n",
-                        packet_from->id, packet_from->game_id, packet_from->version);
+                        packet_from->id, (unsigned int)packet_from->game_id, packet_from->version);
 
                 if (packet_from->version != NETPLAY_VERSION)
                 {
@@ -334,11 +336,26 @@ static void netplay_init()
         netplay_mode = NETPLAY_MODE_NONE;
         netplay_sync = xSemaphoreCreateMutex();
 
-        tcpip_adapter_init();
+        ESP_ERROR_CHECK(esp_event_loop_create_default());
+        ESP_ERROR_CHECK(esp_netif_init());
+        netif_sta = esp_netif_create_default_wifi_sta();
+        netif_ap = esp_netif_create_default_wifi_ap();
 
-        esp_event_loop_create_default();
+        esp_netif_set_hostname(netif_sta, RG_TARGET_NAME);
+        esp_netif_set_hostname(netif_ap, RG_TARGET_NAME);
 
+        // Wifi may use nvs for calibration data
+        if (nvs_flash_init() != ESP_OK && nvs_flash_erase() == ESP_OK)
+            nvs_flash_init();
+
+        // Initialize wifi driver (it won't enable the radio yet)
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        cfg.rx_ba_win = 2;           // 减少 Block ACK 窗口（默认 6）
+        cfg.static_rx_buf_num = 4;   // 减少静态 RX 缓冲区（默认 10）
+        cfg.dynamic_rx_buf_num = 16; // 减少动态 RX 缓冲区（默认 32）
+        cfg.tx_buf_type = 1;         // 使用动态 TX 缓冲区
+        cfg.static_tx_buf_num = 0;   // 不使用静态 TX 缓冲区
+        cfg.dynamic_tx_buf_num = 16; // 减少动态 TX 缓冲区（默认 32）
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
         ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
         ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));

@@ -112,8 +112,9 @@
 /****************************************************************************
  * Net                                                                      *
  ****************************************************************************/
-#define RG_NET_SCK                  GPIO_NUM_1
-#define RG_NET_CS                   GPIO_NUM_17
-#define RG_NET_MOSI                 GPIO_NUM_9
-#define RG_NET_MISO                 GPIO_NUM_10
+#define RG_NET_SCK                  1
+#define RG_NET_CS                   17
+#define RG_NET_MOSI                 9
+#define RG_NET_MISO                 10
 #define RG_NET_HS                   GPIO_NUM_44
+#define FRAME_BUFFER_SIZE           1024

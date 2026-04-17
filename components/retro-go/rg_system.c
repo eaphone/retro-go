@@ -557,6 +557,10 @@ rg_app_t *rg_system_init(const rg_config_t *config)
     profile->lock = rg_mutex_create();
 #endif
 
+#ifdef RG_ENABLE_NETPLAY
+    rg_netplay_init(app.handlers.event);
+#endif
+
     update_memory_statistics();
     RG_LOGI("Available memory: %d/%d + %d/%d", statistics.freeMemoryInt / 1024, statistics.totalMemoryInt / 1024,
             statistics.freeMemoryExt / 1024, statistics.totalMemoryExt / 1024);

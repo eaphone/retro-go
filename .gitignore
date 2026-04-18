@@ -21,3 +21,5 @@ build/
 /stdout.txt
 /gmon.out
 /*.exe
+managed_components
+*.lock

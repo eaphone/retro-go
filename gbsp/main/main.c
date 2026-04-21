@@ -27,6 +27,7 @@ static rg_surface_t *currentUpdate;
 static rg_app_t *app;
 
 static const char *SETTING_SOUND_EMULATION = "sound";
+static void *gba_save_buffer = NULL;
 
 void netpacket_poll_receive()
 {
@@ -43,25 +44,27 @@ static bool screenshot_handler(const char *filename, int width, int height)
 
 static bool save_state_handler(const char *filename)
 {
+    RG_LOGW("Free internal heap: %d\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    RG_LOGW("Free SPIRAM: %d\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     size_t buffer_len = GBA_STATE_MEM_SIZE;
-    void *buffer = rg_alloc(buffer_len, MEM_ANY);
-    if (!buffer)
-        return false;
-    gba_save_state(buffer);
-    bool success = rg_storage_write_file(filename, buffer, buffer_len, 0);
-    free(buffer);
+    //void *buffer = rg_alloc(buffer_len, MEM_ANY);
+    //if (!buffer)
+    //    return false;
+    gba_save_state(gba_save_buffer);
+    bool success = rg_storage_write_file(filename, gba_save_buffer, buffer_len, 0);
+    //free(buffer);
     return success;
 }
 
 static bool load_state_handler(const char *filename)
 {
     size_t buffer_len = GBA_STATE_MEM_SIZE;
-    void *buffer = rg_alloc(buffer_len, MEM_ANY);
-    if (!buffer)
-        return false;
-    bool success = rg_storage_read_file(filename, &buffer, &buffer_len, RG_FILE_USER_BUFFER)
-                    && gba_load_state(buffer);
-    free(buffer);
+    //void *buffer = malloc(buffer_len);
+    //if (!buffer)
+    //    return false;
+    bool success = rg_storage_read_file(filename, &gba_save_buffer, &buffer_len, RG_FILE_USER_BUFFER)
+                    && gba_load_state(gba_save_buffer);
+    //free(buffer);
     return success;
 }
 
@@ -120,6 +123,7 @@ static void options_handler(rg_gui_option_t *dest)
 
 void app_main(void)
 {
+    gba_save_buffer = rg_alloc(GBA_STATE_MEM_SIZE, MEM_ANY);
     app = rg_system_init(&(const rg_config_t){
         .sampleRate = AUDIO_SAMPLE_RATE,
         .frameRate = 60,

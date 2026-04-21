@@ -102,14 +102,47 @@ static int avi_parse_info(const char* filepath, avi_info_t* info) {
                                         RG_LOGI("Video stream: %lu/%lu fps",
                                                 info->fps_numerator, info->fps_denominator);
                                     }
+                                    else if (stream_type == 0x73647561) { // 'auds'
+                                        info->has_audio = true;
+                                        uint32_t scale = read_le32(&strh_data[16]);
+                                        uint32_t rate = read_le32(&strh_data[20]);
+                                        if (scale != 0) {
+                                            info->audio.sample_rate = rate / scale;
+                                        }
+                                        RG_LOGI("Audio stream found, sample rate = %lu Hz", info->audio.sample_rate);
+                                    }
                                 }
                             }
                             else if (str_id == 0x66727473) { // 'strf'
-                                uint8_t strf_data[40];
-                                if (fread(strf_data, 1, 40, file) == 40) {
-                                    uint32_t compression = read_le32(&strf_data[16]);
-                                    if (compression == 0x47504a4d) {
-                                        RG_LOGI("MJPEG compression detected");
+                                if (info->has_audio) {
+                                    // 读取 WAVEFORMATEX (16字节基础)
+                                    uint8_t wf[16];
+                                    if (fread(wf, 1, 16, file) == 16) {
+                                        uint16_t format_tag = read_le16(&wf[0]);
+                                        info->audio.channels = read_le16(&wf[2]);
+                                        info->audio.sample_rate = read_le32(&wf[4]);
+                                        info->audio.avg_bytes_per_sec = read_le32(&wf[8]);
+                                        info->audio.block_align = read_le16(&wf[12]);
+                                        info->audio.bits_per_sample = read_le16(&wf[14]);
+                                        //RG_LOGI("Audio format: %d Hz, %d channels, %d bits",
+                                        //        info->audio.sample_rate, info->audio.channels, info->audio.bits_per_sample);
+                                        // 跳过可能的额外扩展字节 (cbSize)
+                                        if (str_size > 16) {
+                                            fseek(file, str_size - 16, SEEK_CUR);
+                                        }
+                                    } else {
+                                        fseek(file, str_size, SEEK_CUR);
+                                    }
+                                } else {
+                                    // 视频流 strf
+                                    uint8_t strf_data[40];
+                                    if (fread(strf_data, 1, 40, file) == 40) {
+                                        uint32_t compression = read_le32(&strf_data[16]);
+                                        if (compression == 0x47504a4d) {
+                                            RG_LOGI("MJPEG compression detected");
+                                        }
+                                    } else {
+                                        fseek(file, str_size, SEEK_CUR);
                                     }
                                 }
                             }
@@ -169,10 +202,10 @@ static int find_next_video_frame(FILE* file, uint32_t* out_offset, uint32_t* out
         uint32_t chunk_id = read_le32(&chunk[0]);
         uint32_t chunk_size = read_le32(&chunk[4]);
 
-        RG_LOGI("Raw chunk header at %ld: %02X %02X %02X %02X %02X %02X %02X %02X", 
-                pos, chunk[0], chunk[1], chunk[2], chunk[3], 
-                chunk[4], chunk[5], chunk[6], chunk[7]);
-        RG_LOGI("chunk_id=0x%08lX, chunk_size=%lu", (unsigned long)chunk_id, chunk_size);
+        // 可选：打印原始头部（调试用，正式使用时注释掉）
+        // RG_LOGI("Raw chunk header at %ld: %02X %02X %02X %02X %02X %02X %02X %02X", 
+        //         pos, chunk[0], chunk[1], chunk[2], chunk[3], 
+        //         chunk[4], chunk[5], chunk[6], chunk[7]);
         
         // 检查是否是视频帧 (00dc, 01dc, etc.)
         if (chunk_id == 0x63643030 ||  // '00dc'
@@ -196,6 +229,27 @@ static int find_next_video_frame(FILE* file, uint32_t* out_offset, uint32_t* out
     }
     
     RG_LOGE("No video frame found after %d attempts", attempts);
+    return -1;
+}
+
+static int find_next_audio_chunk(FILE* file, uint32_t* out_offset, uint32_t* out_size) {
+    int attempts = 0;
+    while (attempts++ < 10000) {
+        long pos = ftell(file);
+        uint8_t chunk[8];
+        if (fread(chunk, 1, 8, file) != 8) return -1;
+        uint32_t id = read_le32(&chunk[0]);
+        uint32_t size = read_le32(&chunk[4]);
+        // 音频块 ID 通常为 '01wb' (0x62773130) 或 '02wb'
+        if (id == 0x62773130 || id == 0x62773230) {
+            *out_offset = ftell(file);
+            *out_size = size;
+            RG_LOGI("Found audio chunk at offset %lu, size=%lu, id=0x%08lX", *out_offset, *out_size, (unsigned long)id);
+            return 0;
+        }
+        fseek(file, size, SEEK_CUR);
+        if (size & 1) fseek(file, 1, SEEK_CUR);
+    }
     return -1;
 }
 
@@ -265,12 +319,24 @@ int avi_player_init(avi_player_t* player, const char* filepath) {
     player->movi_data_start = ftell(player->file);
     RG_LOGI("movi data starts at offset %lu, list_size=%lu", player->movi_data_start, list_size);
     
-    // 查找第一帧并保存其位置
+    // 查找第一帧视频并保存其位置
     if (find_next_video_frame(player->file, &player->next_frame_offset, &player->next_frame_size) != 0) {
         RG_LOGE("No video frame found in movi chunk");
         fclose(player->file);
         player->file = NULL;
         return -1;
+    }
+    
+    // 如果存在音频流，定位第一个音频块
+    if (player->info.has_audio) {
+        // 重置到 movi 数据开始位置
+        fseek(player->file, player->movi_data_start, SEEK_SET);
+        if (find_next_audio_chunk(player->file, &player->audio_next_offset, &player->audio_next_size) == 0) {
+            RG_LOGI("First audio chunk at offset %lu, size %lu", player->audio_next_offset, player->audio_next_size);
+        } else {
+            RG_LOGW("No audio chunks found, disabling audio");
+            player->info.has_audio = false;
+        }
     }
     
     player->current_frame = 0;
@@ -348,6 +414,34 @@ int avi_player_get_next_frame(avi_player_t* player, uint8_t** out_data, uint32_t
     return 0;
 }
 
+int avi_player_get_next_audio(avi_player_t* player, uint8_t** out_data, uint32_t* out_size) {
+    if (!player || !player->file || !out_data || !out_size) return -1;
+    if (!player->info.has_audio) return -1;
+    if (player->audio_next_offset == 0) return 1; // 无更多音频
+    
+    uint8_t* data = (uint8_t*)malloc(player->audio_next_size);
+    if (!data) return -1;
+    
+    fseek(player->file, player->audio_next_offset, SEEK_SET);
+    if (fread(data, 1, player->audio_next_size, player->file) != player->audio_next_size) {
+        free(data);
+        return -1;
+    }
+    
+    // 定位到下一个音频块
+    long next = player->audio_next_offset + player->audio_next_size;
+    if (player->audio_next_size & 1) next++;
+    fseek(player->file, next, SEEK_SET);
+    if (find_next_audio_chunk(player->file, &player->audio_next_offset, &player->audio_next_size) != 0) {
+        player->audio_next_offset = 0;
+        player->audio_next_size = 0;
+    }
+    
+    *out_data = data;
+    *out_size = player->audio_next_size;
+    return 0;
+}
+
 void avi_player_close(avi_player_t* player) {
     if (!player) return;
     if (player->file) {
@@ -370,7 +464,6 @@ uint32_t avi_player_get_current_frame(avi_player_t* player) {
 }
 
 int avi_player_seek_to_frame(avi_player_t* player, uint32_t frame_index) {
-    // TODO: Implement seeking
     (void)player;
     (void)frame_index;
     RG_LOGW("Seek not implemented yet");

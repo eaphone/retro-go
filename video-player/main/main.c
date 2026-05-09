@@ -21,6 +21,7 @@ static void event_handler(int event, void *arg) {
 
 static void audio_task(void *arg) {
     avi_player_t *player = (avi_player_t*)arg;
+    rg_audio_init(player->info.audio.sample_rate);
     while (true) {
         uint8_t *aud_data = NULL;
         uint32_t aud_size = 0;
@@ -52,7 +53,7 @@ static int mjpeg_play(const char *filepath)
 
     // 帧缓冲区内部 SRAM（硬件解码要求）
     uint32_t fb_size = info->width * info->height * 2;
-    uint16_t *frame_buf = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM);
+    uint16_t *frame_buf = rg_alloc(fb_size, MEM_SLOW|MEM_32BIT);
     if (!frame_buf) {
         RG_LOGE("Frame buffer alloc failed");
         avi_player_close(&player);
@@ -61,7 +62,7 @@ static int mjpeg_play(const char *filepath)
 
     // 解码工作缓冲区内部 SRAM
     size_t work_size = 8192;
-    uint8_t *work_buf = (uint8_t*)heap_caps_malloc(work_size, MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+    uint8_t *work_buf = rg_alloc(work_size, MEM_FAST|MALLOC_CAP_8BIT);
     if (!work_buf) {
         free(frame_buf);
         avi_player_close(&player);
@@ -78,12 +79,26 @@ static int mjpeg_play(const char *filepath)
 
     uint32_t frame_count = 0;
     uint32_t start_time = rg_system_timer();
+
     if(info->has_audio && false){
         rg_task_create("audio", audio_task, &player, 2048, 1, RG_TASK_PRIORITY_6, 1);
+    }else{
+        rg_audio_init(48000);
     }
     bool playing = true;
 
     while (playing && avi_player_has_more_frames(&player)) {
+        const int64_t startTime = rg_system_timer();
+        uint32_t joystick = rg_input_read_gamepad();
+
+        if (joystick & (RG_KEY_MENU | RG_KEY_OPTION))
+        {
+            if (joystick & RG_KEY_MENU)
+                rg_gui_game_menu();
+            else
+                rg_gui_options_menu();
+            continue;
+        }
 
         uint8_t *jpeg_data = NULL;
         uint32_t jpeg_size = 0;

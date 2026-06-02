@@ -69,17 +69,23 @@
 #define RG_SCREEN_ROTATE            0
 #define RG_SCREEN_VISIBLE_AREA      {0, 0, 0, 0}
 #define RG_SCREEN_SAFE_AREA         {0, 0, 0, 0}
-#define RG_SCREEN_INIT()                                                                                            \
-    ILI9341_CMD(0x11, 0x00);                                                                                        \
-    rg_usleep(120 * 1000);                                                                                          \
+#define RG_SCREEN_INIT()                                                                                             \
+    rg_task_delay(120);                                                                                              \
+    /* Sleep Out (0x11) */                                                                                           \
+    ILI9341_CMD(0x11);                                                                                               \
+    rg_task_delay(120);                                                                                              \
+    /* MADCTL (0x36) - MY=1, MX=1, MV=1, BGR=1 (180deg rotate, BGR order) */                                       \
     ILI9341_CMD(0x36, 0x60);                                                                                        \
+    /* COLMOD (0x3A) - 16-bit RGB565 */                                                                             \
     ILI9341_CMD(0x3A, 0x05);                                                                                        \
-    ILI9341_CMD(0xC0, 0x28);                 /* Power control   //VRH[5:0] */                                       \
-    ILI9341_CMD(0x20, 0x00);                 /* Gamma curve selected */                                             \
-    ILI9341_CMD(0x13, 0x00);                 /* Gamma curve selected */                                             \
-    ILI9341_CMD(0x29, 0x00);                                                                                        \
-    rg_usleep(50 * 1000);                                                                                           \
-
+    /* RAMCTRL (0xB0) - set big-endian RGB565 */                                                                 \
+    ILI9341_CMD(0xB0, 0x00, 0xF0);                                                                                  \
+    /* Gamma curve selected */                                                                                       \
+    ILI9341_CMD(0x26, 0x01);                                                                                       \
+    ILI9341_CMD(0x20, 0x00);                                                                                        \
+    ILI9341_CMD(0x13, 0x00);                                                                                        \
+    /* Power Control VRH[5:0] */                                                                                    \
+    rg_task_delay(50);
 
 /****************************************************************************
  * Input                                                                    *

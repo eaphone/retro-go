@@ -702,6 +702,8 @@ void applications_init(void)
     application("DOOM", "doom", "wad zip", "prboom-go", 0);
     application("MSX", "msx", "rom mx1 mx2 dsk", "fmsx", 0);
     application("Video Player", "vp", "mp4 avi mkv raw", "video-player", 0);
+    // IBM PC/XT/AT emulator (tiny386)
+    application("MS-Dos", "dos", "/", "tiny386-go", 0);
 
     // Special app to bootstrap native esp32 binaries from the SD card
     // application("Bootstrap", "apps", "bin elf", "bootstrap", 0);

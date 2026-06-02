@@ -94,4 +94,4 @@ if __name__ == "__main__":
         sys.exit(1)
 
     input_png = sys.argv[1]
-    image_to_c_array(input_png, max_dim=160)
+    image_to_c_array(input_png, max_dim=320)

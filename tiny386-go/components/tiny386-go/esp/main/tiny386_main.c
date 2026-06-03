@@ -9,7 +9,7 @@
  *  - Removed rg_system_set_overclock() (retro-go provides its own)
  *  - Uses retro-go's display driver instead of the native LCD drivers
  *  - Uses retro-go's audio system instead of direct I2S
- *  - Uses retro-go's input system instead of direct GPIO polling
+ *  - Uses retro-go's input system (rg_input_read_gamepad) instead of direct GPIO polling
  *  - Reads config from the path passed in by retro-go
  */
 
@@ -26,6 +26,7 @@
 #include "esp_log.h"
 #include "rg_utils.h"
 #include "rg_surface.h"
+#include <rg_input.h>
 
 #include "../../ini.h"
 #include "../../pc.h"
@@ -139,7 +140,7 @@ typedef struct {
 uint8_t *g_framebuffer = NULL;
 
 /* RG display surface for retro-go integration */
-static rg_surface_t *rg_surf = NULL;
+rg_surface_t *rg_surf = NULL;
 
 Console *console_init(int width, int height)
 {
@@ -182,6 +183,7 @@ void vga_task(void *arg);
 void wifi_main(const char *, const char *);
 void storage_init(void);
 void input_init(void);
+void input_process(void);  /* New retro-go based input processing */
 void i2s_main(void);
 
 static int pc_main(const char *file)
@@ -199,7 +201,6 @@ static int pc_main(const char *file)
 		return err;
 	}
 
-	/* ���ؼ������Ƿ񱻼��� */
 	if (conf.bios == NULL && conf.linuxstart == NULL) {
 		fprintf(stderr, "FATAL: no BIOS/linuxstart configured in '%s'\n", file);
 		return -1;
@@ -219,12 +220,12 @@ static int pc_main(const char *file)
 	globals.kbd = pc->kbd;
 	globals.mouse = pc->mouse;
 
-	/* Initialize GPIO keyboard input (uses globals.kbd) */
+	/* Initialize input using retro-go gamepad API (not GPIO) */
 	input_init();
 
 	/* Initialize OSD menu */
 	menu_init();
-
+	
 	load_bios_and_reset(pc);
 
 	/* Signal vga_task that PC is fully initialized (BIOS loaded, reset done) */
@@ -239,10 +240,13 @@ static int pc_main(const char *file)
 	pc->boot_start_time = get_uticks();
 	for (; pc->shutdown_state != 8;) {
 		while (emu_paused) {
-			/* �˵�����ʱ��ÿ�� 50ms ���һ���Ƿ�ָ� */
 			vTaskDelay(pdMS_TO_TICKS(50));
 		}
         
+		/* Process retro-go gamepad input */
+		input_process();
+
+		/* Step the emulator */
 		pc_step(pc);
 	}
 	return 0;
@@ -327,25 +331,10 @@ void tiny386_start(const char *config_path)
 	ESP_LOGI(TAG, "Starting tiny386 emulator...");
 	ESP_LOGI(TAG, "Config: %s", config_path ? config_path : "(none)");
 
-	/* ���� ESP-IDF ����ڲ�����Ҫ�ĵ�����־ */
 	esp_log_level_set("gpio", ESP_LOG_WARN);
 	esp_log_level_set("I2C", ESP_LOG_WARN);
 
 	global_event_group = xEventGroupCreate();
-
-	i2s_main();
-	storage_init();
-
-	esp_psram_init();
-#ifndef PSRAM_ALLOC_LEN
-	// use the whole psram
-	size_t len;
-	psram = esp_psram_get(&len);
-	psram_len = len;
-#else
-	psram_len = PSRAM_ALLOC_LEN;
-	psram = heap_caps_calloc(1, psram_len, MALLOC_CAP_SPIRAM);
-#endif
 
 	static struct esp_ini_config config = {0};
 	if (config_path && config_path[0]) {
@@ -357,35 +346,23 @@ void tiny386_start(const char *config_path)
 			return;
 		}
 	} else {
-		const static char *files[] = {
-			"/sdcard/tiny386.ini",
-			"/spiflash/tiny386.ini",
-			NULL,
-		};
-		bool ini_found = false;
-		for (int i = 0; files[i]; i++) {
-			if (ini_parse(files[i], parse_ini, &config) == 0) {
-				config.filename = files[i];
-				ini_found = true;
-				fprintf(stderr, "Using config: %s\n", files[i]);
-				break;
-			}
-		}
-		if (!ini_found) {
-			fprintf(stderr, "FATAL: No config file found\n");
-			return;
-		}
+		fprintf(stderr, "FATAL: No config file found\n");
+		return;
 	}
 
-	if (config.ssid[0]) {
-		wifi_main(config.ssid, config.pass);
+	/* Allocate PSRAM pool for emulator memory */
+	psram_len = PSRAM_ALLOC_LEN;
+	psram = heap_caps_calloc(1, psram_len, MALLOC_CAP_SPIRAM);
+	if (!psram) {
+		fprintf(stderr, "FATAL: Failed to allocate %d bytes of PSRAM\n", psram_len);
+		return;
 	}
+	fprintf(stderr, "PSRAM allocated: %p, size=%d\n", psram, psram_len);
 
 	if (psram) {
-		xTaskCreatePinnedToCore(i386_task, "i386_main", 4096, &config, 3, NULL, 1);
-		xTaskCreatePinnedToCore(vga_task, "vga_task", 4096, NULL, 0, NULL, 0);
+		xTaskCreatePinnedToCore(i386_task, "i386_main", 8192, &config, 3, NULL, 1);
+		xTaskCreatePinnedToCore(vga_task, "vga_task", 8192, NULL, 0, NULL, 0);
 	} else {
 		fprintf(stderr, "FATAL: No PSRAM available\n");
 	}
 }
-

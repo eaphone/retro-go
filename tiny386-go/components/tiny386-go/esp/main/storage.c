@@ -1,3 +1,11 @@
+/*
+ * SD/SPI storage for tiny386.
+ * 
+ * DISABLED when RETRO_GO is defined, since retro-go handles
+ * storage initialization (SD card, SPI flash, etc.) itself.
+ */
+#ifndef RETRO_GO
+
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -153,10 +161,11 @@ void storage_init(void)
         };
         esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/spiflash", "storage",
                                                          &spiflash_cfg, &s_wl_handle);
-        if (ret == ESP_OK) {
+                if (ret == ESP_OK) {
             ESP_LOGI(TAG, "SPIFFS mounted successfully");
         } else {
             ESP_LOGW(TAG, "SPIFFS mount/format failed: 0x%x", ret);
         }
     }
 }
+#endif /* RETRO_GO */

@@ -24,14 +24,8 @@
 #define SD_SPI_FREQ_KHZ 20000
 
 // I2C for backlight (CH422G I/O expander)
-#define LCD_I2C_SDA  GPIO_NUM_15
-#define LCD_I2C_SCL  GPIO_NUM_16
 
 // I2S audio output for HT517 amplifier
 // HT517 is an I2S DAC amplifier, no external codec config needed
 // BCK=GPIO8, WS=GPIO3, DATA=GPIO18, MCLK unused
-#define I2S_MCLK I2S_GPIO_UNUSED
-#define I2S_BCLK GPIO_NUM_8
-#define I2S_WS   GPIO_NUM_3
-#define I2S_DOUT GPIO_NUM_18
 #define MIXER_BUF_LEN 256

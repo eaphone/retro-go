@@ -1,3 +1,16 @@
+/*
+ * Audio output for tiny386 - DISABLED when RETRO_GO is defined.
+ *
+ * Retro-Go provides its own audio system via rg_audio. Including this
+ * file alongside retro-go's I2S driver will cause a driver conflict:
+ *
+ *   "CONFLICT! The new i2s driver can't work along with the legacy i2s driver"
+ *
+ * To avoid this, the entire I2S initialization and audio task are
+ * disabled when RETRO_GO is defined, and volume_* stubs are provided.
+ */
+#ifndef RETRO_GO
+
 #include <unistd.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -219,6 +232,34 @@ void i2s_main()
 #ifdef USE_ES8311
 	ESP_ERROR_CHECK(es8311_codec_init());
 #endif
-	xTaskCreatePinnedToCore(i2s_task, "i2s_task", 4096, NULL, 0, NULL, 0);
+		xTaskCreatePinnedToCore(i2s_task, "i2s_task", 4096, NULL, 0, NULL, 0);
 #endif
 }
+#endif /* RETRO_GO */
+
+/* Stub implementations for menu.c when RETRO_GO is defined.
+ * These provide the volume_get/volume_set symbols even when
+ * the real I2S driver is not compiled. */
+#ifdef RETRO_GO
+#include "esp_log.h"
+static const char *TAG = "i2s";
+static int s_volume = 50;
+
+void volume_set(int percent)
+{
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    s_volume = percent;
+    ESP_LOGI(TAG, "Volume: %d%% (stub)", s_volume);
+}
+
+int volume_get(void)
+{
+    return s_volume;
+}
+
+void i2s_main(void)
+{
+    ESP_LOGW(TAG, "I2S audio disabled under retro-go");
+}
+#endif

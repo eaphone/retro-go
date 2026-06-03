@@ -3,6 +3,10 @@
  *
  * This integrates the tiny386 386 PC emulator (ESP32-S3 port)
  * as a component that can be launched from retro-go's launcher.
+ *
+ * Input handling follows the same pattern as fmsx: using
+ * rg_input_read_gamepad() in the emulator's main loop rather
+ * than polling GPIO pins directly.
  */
 
 #include <rg_system.h>
@@ -13,6 +17,11 @@
 #define AUDIO_SAMPLE_RATE (44100)
 
 static rg_app_t *app;
+
+/* Input mode: 0 = joystick (arrows + A/B as Enter/Esc),
+ *             1 = keyboard emulation (arrows as arrow keys)
+ * Selected+Start toggles virtual keyboard */
+static int InputMode = 1;
 
 /* Forward declaration of the tiny386 entry point */
 extern void tiny386_start(const char *config_path);
@@ -56,34 +65,25 @@ static void event_handler(int event, void *arg)
 }
 
 /* ============================================================
- * Options handler
+ * Input mode selector callback (like fmsx's input_select_cb)
  * ============================================================ */
-static rg_gui_event_t overclock_cb(rg_gui_option_t *option, rg_gui_event_t event)
+static rg_gui_event_t input_select_cb(rg_gui_option_t *option, rg_gui_event_t event)
 {
-    static int oc_level = 0;
-    const char *levels[] = {"Default", "+1", "+2", "+3", "+4", "+5", "+6", "+7", "+8"};
-    int max = 8;
-
-    if (event == RG_DIALOG_PREV && --oc_level < 0) oc_level = max;
-    if (event == RG_DIALOG_NEXT && ++oc_level > max) oc_level = 0;
-
     if (event == RG_DIALOG_PREV || event == RG_DIALOG_NEXT)
     {
-        if (oc_level == 0)
-            rg_system_set_overclock(0);
-        else
-            rg_system_set_overclock(oc_level);
-        rg_settings_set_number(NS_APP, "OCLevel", oc_level);
+        InputMode = !InputMode;
+        rg_settings_set_number(NS_APP, "Input", InputMode);
         return RG_DIALOG_REDRAW;
     }
-
-    strcpy(option->value, levels[oc_level]);
+    strcpy(option->value, InputMode ? _("Keyboard") : _("Joystick"));
     return RG_DIALOG_VOID;
 }
-
+/* ============================================================
+ * Options handler
+ * ============================================================ */
 static void options_handler(rg_gui_option_t *dest)
 {
-    *dest++ = (rg_gui_option_t){0, "Overclock", "-", RG_DIALOG_FLAG_NORMAL, &overclock_cb};
+    *dest++ = (rg_gui_option_t){0, _("Input"), "-", RG_DIALOG_FLAG_NORMAL, &input_select_cb};
     *dest++ = (rg_gui_option_t)RG_DIALOG_END;
 }
 
@@ -124,33 +124,24 @@ void app_main(void)
 
     RG_LOGI("tiny386-go initializing...");
 
+    /* Restore saved input mode */
+    InputMode = rg_settings_get_number(NS_APP, "Input", 1);
+
     /* Check if a config INI file was provided */
-    const char *rom_path = app->romPath;
     char config_path[RG_PATH_MAX + 1] = {0};
 
-    if (rom_path && strlen(rom_path) > 0)
+    /* Try default config paths */
+    const char *paths[] = {
+        RG_BASE_PATH_ROMS "/dos/tiny386.ini",
+        NULL,
+    };
+    for (int i = 0; paths[i]; i++)
     {
-        /* If a specific config file was provided via ROM selector, use it */
-        snprintf(config_path, RG_PATH_MAX, "%s", rom_path);
-        RG_LOGI("Using config: %s", config_path);
-    }
-    else
-    {
-        /* Try default config paths */
-        const char *paths[] = {
-            RG_BASE_PATH_ROMS "/tiny386/tiny386.ini",
-            "/sdcard/tiny386.ini",
-            "/spiflash/tiny386.ini",
-            NULL,
-        };
-        for (int i = 0; paths[i]; i++)
+        if (rg_storage_exists(paths[i]))
         {
-            if (rg_storage_exists(paths[i]))
-            {
-                snprintf(config_path, RG_PATH_MAX, "%s", paths[i]);
-                RG_LOGI("Found config: %s", config_path);
-                break;
-            }
+            snprintf(config_path, RG_PATH_MAX, "%s", paths[i]);
+            RG_LOGI("Found config: %s", config_path);
+            break;
         }
     }
 
@@ -159,7 +150,7 @@ void app_main(void)
         RG_LOGE("No tiny386 config file found!");
         rg_gui_alert("Configuration missing",
             "Place a tiny386.ini config file in:\n"
-            RG_BASE_PATH_ROMS "/tiny386/\n"
+            RG_BASE_PATH_ROMS "/tiny386.ini\n"
             "See the tiny386 documentation for details.");
         rg_system_exit();
         return;
@@ -171,3 +162,4 @@ void app_main(void)
     RG_LOGI("tiny386-go exiting...");
     rg_system_exit();
 }
+

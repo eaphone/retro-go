@@ -34,16 +34,21 @@ static int scan_folder_cb(const rg_scandir_t *entry, void *arg)
     if (entry->basename[0] == '.')
         return RG_SCANDIR_SKIP;
 
-    if (entry->is_file)
+    if (entry->is_dir) {
+        if (app->extensions == '/'){
+            type = RETRO_TYPE_FILE;
+        }else 
+        {
+            RG_LOGI("Found subdirectory '%s'", entry->path);
+            type = RETRO_TYPE_FOLDER;
+        }
+    }
+    else if (entry->is_file)
     {
         if (rg_extension_match(entry->basename, app->extensions))
             type = RETRO_TYPE_FILE;
     }
-    else if (entry->is_dir)
-    {
-        RG_LOGI("Found subdirectory '%s'", entry->path);
-        type = RETRO_TYPE_FOLDER;
-    }
+    
 
     if (type == RETRO_TYPE_INVALID)
         return RG_SCANDIR_CONTINUE;
@@ -703,7 +708,7 @@ void applications_init(void)
     application("MSX", "msx", "rom mx1 mx2 dsk", "fmsx", 0);
     application("Video Player", "vp", "mp4 avi mkv raw", "video-player", 0);
     // IBM PC/XT/AT emulator (tiny386)
-    application("MS-Dos", "dos", "/", "tiny386-go", 0);
+    application("MS-Dos", "dos", "/ img", "tiny386-go", 0);
 
     // Special app to bootstrap native esp32 binaries from the SD card
     // application("Bootstrap", "apps", "bin elf", "bootstrap", 0);

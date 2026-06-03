@@ -10,6 +10,7 @@
 #include "common.h"
 #include "menu.h"
 #include "image_lionstdio.h"
+#include <rg_display.h>  /* For rg_surface_t, rg_display_submit() */
 
 extern int vk_active;
 extern int vk_need_refresh;
@@ -431,7 +432,7 @@ static void lcd_clear_screen(void)
     ESP_LOGI(TAG, "Screen cleared");
 }
 
-/* ---- VGA 主任务 ---- */
+/* ---- VGA 主任务 (Retro-Go mode) ---- */
 void vga_task(void *arg)
 {
     int core_id = esp_cpu_get_core_id();
@@ -439,37 +440,6 @@ void vga_task(void *arg)
     
     extern struct Globals globals;
     extern EventGroupHandle_t global_event_group;
-    
-    // 初始化 GPIO
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << PIN_NUM_SPI_DC) | (1ULL << PIN_NUM_SPI_RST),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&io_conf);
-    
-    // 初始化背光
-    backlight_init();
-    
-    // 初始化 SPI
-    spi_init();
-    
-    // 初始化 LCD
-    lcd_init_hardware();
-    
-    // 显示测试图案（先填充屏幕再开背光，避免显示雪花）
-    lcd_test_pattern();
-    
-    // 设置背光亮度
-    backlight_set(30);
-    
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    // 清屏为黑色
-    ESP_LOGI(TAG, "Clearing screen to black");
-    lcd_clear_screen();
     
     // 通知 PC 任务面板已就绪
     globals.panel = (void*)1;  // 非 NULL 表示面板已就绪
@@ -481,45 +451,27 @@ void vga_task(void *arg)
         ESP_LOGI(TAG, "Starting VGA loop");
     
     extern uint8_t *g_framebuffer;
+    extern rg_surface_t *rg_surf;  /* RG surface from tiny386_main.c */
     uint32_t frame = 0;
     
     while (1) {
-                /* 菜单激活时：直接刷新全屏（menu_tick 已写入 framebuffer） */
-        /* 菜单激活时：直接刷新全屏（menu_tick 已写入 framebuffer） */
         if (menu_active) {
-            /* 菜单激活时：保持模拟器暂停，不执行 CPU */
             menu_tick();
-            if (g_framebuffer) {
-                lcd_draw(0, 0, LCD_WIDTH, LCD_HEIGHT, g_framebuffer);
-            }
         } else if (vk_active) {
-            /* 虚拟键盘激活时：保持模拟器运行 */
             pc_vga_step(globals.pc);
-            /* 每帧重绘键盘叠加层（防止 VGA 刷新覆盖键盘）*/
             menu_tick();
-            /* 只在状态变化时推送 LCD */
-            if (vk_need_refresh) {
-                vk_need_refresh = 0;
-                if (g_framebuffer) {
-                    lcd_draw(0, 0, LCD_WIDTH, LCD_HEIGHT, g_framebuffer);
-                }
-            }
         } else {
             pc_vga_step(globals.pc);
-            /* 非菜单时也调用 menu_tick，用于 HUD 显示
-             * 当 display_info_on 为真时，menu_tick 会在每帧写入 framebuffer，
-             * 所以需要每帧全屏推送到 LCD */
             menu_tick();
-            if (display_info_on && g_framebuffer) {
-                lcd_draw(0, 0, LCD_WIDTH, LCD_HEIGHT, g_framebuffer);
-            }
         }
         
-        /* Full-screen refresh is done periodically for any missed updates.
-         * Also refresh when HUD was just turned off (display_info_on == 0 but
-         * black-pixel cleanup was written to framebuffer). */
-        if (!menu_active && !vk_active && !display_info_on && g_framebuffer && (frame % 5 == 0)) {
-            lcd_draw(0, 0, LCD_WIDTH, LCD_HEIGHT, g_framebuffer);
+        /* Submit framebuffer to retro-go display every few frames.
+         * The redraw() callback handles dirty rectangle updates incrementally,
+         * but we do a periodic full submit for robustness.
+         * rg_display_submit() will take care of scaling, rotation, etc. */
+        if (frame % 5 == 0 && rg_surf) {
+            rg_surf->offset = 0;
+            rg_display_submit(rg_surf, 0);
         }
         
         frame++;
@@ -527,7 +479,7 @@ void vga_task(void *arg)
             ESP_LOGD(TAG, "Frame %lu", frame);
         }
         
-        vTaskDelay(pdMS_TO_TICKS(33));
+        vTaskDelay(pdMS_TO_TICKS(16));  /* ~60 fps */
     }
 }
 

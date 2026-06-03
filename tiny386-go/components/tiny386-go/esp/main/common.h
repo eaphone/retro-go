@@ -30,6 +30,10 @@ extern int scroll_active;
 extern EventGroupHandle_t global_event_group;
 extern struct Globals globals;
 
+/* Input processing (using retro-go gamepad API) */
+void input_process(void);
+void input_init(void);
+
 /* 背光控制（各 LCD 驱动实现） */
 extern void backlight_set(int percent);
 
@@ -38,4 +42,3 @@ extern void volume_set(int percent);
 extern int volume_get(void);
 
 #endif /* COMMON_H */
-

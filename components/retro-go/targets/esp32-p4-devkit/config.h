@@ -7,13 +7,13 @@
  * Target definition for ESP32-P4 Dev-Board                                 *
  ****************************************************************************/
 #define RG_TARGET_NAME             "ESP32-P4-DEVKIT"
-
+#define USE_ADC_DRIVER_NG       1   // 1 = Use new ADC driver, 0 = Use legacy ADC driver (not recommended)
 
 /****************************************************************************
  * Status LED                                                               *
  ****************************************************************************/
-// #define RG_LED_DRIVER               1   // 1 = GPIO
-// #define RG_GPIO_LED                 GPIO_NUM_NC
+#define RG_LED_DRIVER               1   // 1 = GPIO
+#define RG_GPIO_LED                 GPIO_NUM_21
 // #define RG_GPIO_LED_INVERT          // Uncomment if the LED is active LOW
 
 
@@ -30,20 +30,14 @@
  * Storage                                                                  *
  ****************************************************************************/
 #define RG_STORAGE_ROOT             "/sd"
-// #define RG_STORAGE_SDSPI_HOST       SPI2_HOST
-// #define RG_STORAGE_SDSPI_SPEED      SDMMC_FREQ_DEFAULT
-// #define RG_GPIO_SDSPI_MISO          GPIO_NUM_19
-// #define RG_GPIO_SDSPI_MOSI          GPIO_NUM_23
-// #define RG_GPIO_SDSPI_CLK           GPIO_NUM_18
-// #define RG_GPIO_SDSPI_CS            GPIO_NUM_22
 #define RG_STORAGE_SDMMC_HOST       SDMMC_HOST_SLOT_1
 #define RG_STORAGE_SDMMC_SPEED      SDMMC_FREQ_HIGHSPEED
-#define RG_GPIO_SDMMC_CLK           GPIO_NUM_43
-#define RG_GPIO_SDMMC_CMD	        GPIO_NUM_44
-#define RG_GPIO_SDMMC_D0	        GPIO_NUM_39
-#define RG_GPIO_SDMMC_D1	        GPIO_NUM_40
-#define RG_GPIO_SDMMC_D2	        GPIO_NUM_41
-#define RG_GPIO_SDMMC_D3	        GPIO_NUM_42
+#define RG_GPIO_SDMMC_CLK           GPIO_NUM_7
+#define RG_GPIO_SDMMC_CMD	        GPIO_NUM_8
+#define RG_GPIO_SDMMC_D0	        GPIO_NUM_6
+#define RG_GPIO_SDMMC_D1	        GPIO_NUM_5
+#define RG_GPIO_SDMMC_D2	        GPIO_NUM_10
+#define RG_GPIO_SDMMC_D3	        GPIO_NUM_9
 // #define RG_STORAGE_FLASH_PARTITION  "vfs"
 
 
@@ -52,10 +46,12 @@
  ****************************************************************************/
 #define RG_AUDIO_USE_INT_DAC        0   // 0 = Disable, 1 = GPIO25, 2 = GPIO26, 3 = Both
 #define RG_AUDIO_USE_EXT_DAC        1   // 0 = Disable, 1 = Enable
-#define RG_GPIO_SND_I2S_BCK         GPIO_NUM_48
-#define RG_GPIO_SND_I2S_WS          GPIO_NUM_49
-#define RG_GPIO_SND_I2S_DATA        GPIO_NUM_46
-#define RG_GPIO_SND_AMP_ENABLE      GPIO_NUM_47
+#define RG_GPIO_SND_I2S_BCK         GPIO_NUM_4
+#define RG_GPIO_SND_I2S_WS          GPIO_NUM_2
+#define RG_GPIO_SND_I2S_DATA        GPIO_NUM_3
+#define RG_GPIO_SND_AMP_ENABLE      GPIO_NUM_NC
+#define RG_GPIO_MIC_DATA            GPIO_NUM_54
+#define RG_GPIO_MIC_CLK             GPIO_NUM_53
 // #define RG_GPIO_SND_AMP_ENABLE_INVERT // Uncomment if the mute = HIGH
 
 
@@ -94,12 +90,12 @@ ILI9341_CMD(0xE0, 0xD0, 0x00, 0x02, 0x07, 0x0a, 0x28, 0x32, 0x44, 0x42, 0x06, 0x
 ILI9341_CMD(0xE1, 0xD0, 0x00, 0x02, 0x07, 0x0a, 0x28, 0x31, 0x54, 0x47, 0x0E, 0x1C, 0x17, 0x1b, 0x1e);
 
 #define RG_GPIO_LCD_MISO            GPIO_NUM_NC
-#define RG_GPIO_LCD_MOSI            GPIO_NUM_22
-#define RG_GPIO_LCD_CLK             GPIO_NUM_23
-#define RG_GPIO_LCD_CS              GPIO_NUM_24
-#define RG_GPIO_LCD_DC              GPIO_NUM_25
-#define RG_GPIO_LCD_RST             GPIO_NUM_26
-// #define RG_GPIO_LCD_BCKL         GPIO_NUM_NC
+#define RG_GPIO_LCD_MOSI            GPIO_NUM_18
+#define RG_GPIO_LCD_CLK             GPIO_NUM_19
+#define RG_GPIO_LCD_CS              GPIO_NUM_20
+#define RG_GPIO_LCD_DC              GPIO_NUM_21
+#define RG_GPIO_LCD_RST             GPIO_NUM_22
+#define RG_GPIO_LCD_BCKL            GPIO_NUM_23
 // #define RG_GPIO_LCD_BCKL_INVERT  // Uncomment if the LED is active LOW
 
 
@@ -108,30 +104,30 @@ ILI9341_CMD(0xE1, 0xD0, 0x00, 0x02, 0x07, 0x0a, 0x28, 0x31, 0x54, 0x47, 0x0E, 0x
  ****************************************************************************/
 // Refer to rg_input.h to see all available RG_KEY_* and RG_GAMEPAD_*_MAP types
 #define RG_GAMEPAD_GPIO_MAP {\
-    {RG_KEY_LEFT,   .num = GPIO_NUM_13, .pullup = 1, .level = 0},\
-    {RG_KEY_RIGHT,  .num = GPIO_NUM_14, .pullup = 1, .level = 0},\
-    {RG_KEY_UP,     .num = GPIO_NUM_15, .pullup = 1, .level = 0},\
-    {RG_KEY_DOWN,   .num = GPIO_NUM_16, .pullup = 1, .level = 0},\
-    {RG_KEY_SELECT, .num = GPIO_NUM_17, .pullup = 1, .level = 0},\
-    {RG_KEY_START,  .num = GPIO_NUM_18, .pullup = 1, .level = 0},\
-    {RG_KEY_MENU,   .num = GPIO_NUM_19, .pullup = 1, .level = 0},\
-    {RG_KEY_A,      .num = GPIO_NUM_20, .pullup = 1, .level = 0},\
-    {RG_KEY_B,      .num = GPIO_NUM_21, .pullup = 1, .level = 0},\
-    {RG_KEY_X,      .num = GPIO_NUM_12, .pullup = 1, .level = 0},\
-    {RG_KEY_Y,      .num = GPIO_NUM_11, .pullup = 1, .level = 0},\
-    {RG_KEY_L,      .num = GPIO_NUM_10, .pullup = 1, .level = 0},\
-    {RG_KEY_R,      .num = GPIO_NUM_9,  .pullup = 1, .level = 0},\
+    {RG_KEY_LEFT,   .num = GPIO_NUM_40, .pullup = 1, .level = 0},\
+    {RG_KEY_RIGHT,  .num = GPIO_NUM_41, .pullup = 1, .level = 0},\
+    {RG_KEY_UP,     .num = GPIO_NUM_35, .pullup = 1, .level = 0},\
+    {RG_KEY_DOWN,   .num = GPIO_NUM_39, .pullup = 1, .level = 0},\
+    {RG_KEY_SELECT, .num = GPIO_NUM_43, .pullup = 1, .level = 0},\
+    {RG_KEY_START,  .num = GPIO_NUM_42, .pullup = 1, .level = 0},\
+    {RG_KEY_MENU,   .num = GPIO_NUM_NC, .pullup = 1, .level = 0},\
+    {RG_KEY_A,      .num = GPIO_NUM_44, .pullup = 1, .level = 0},\
+    {RG_KEY_B,      .num = GPIO_NUM_45, .pullup = 1, .level = 0},\
+    {RG_KEY_X,      .num = GPIO_NUM_46, .pullup = 1, .level = 0},\
+    {RG_KEY_Y,      .num = GPIO_NUM_47, .pullup = 1, .level = 0},\
+    {RG_KEY_L,      .num = GPIO_NUM_NC, .pullup = 1, .level = 0},\
+    {RG_KEY_R,      .num = GPIO_NUM_NC,  .pullup = 1, .level = 0},\
 }
 
 
 /****************************************************************************
  * Battery                                                                  *
  ****************************************************************************/
-// #define RG_BATTERY_DRIVER            1   // 1 = ADC, 2 = MRGC
-// #define RG_BATTERY_ADC_UNIT          ADC_UNIT_1
-// #define RG_BATTERY_ADC_CHANNEL       ADC_CHANNEL_0
-// #define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3500.f) / (4200.f - 3500.f) * 100.f)
-// #define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 2.f * 0.001f)
+#define RG_BATTERY_DRIVER           1  
+#define RG_BATTERY_ADC_UNIT         ADC_UNIT_2
+#define RG_BATTERY_ADC_CHANNEL      ADC_CHANNEL_3
+#define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3200.f) / (3900.f - 3200.f) * 100.f)
+#define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 2.f * 0.001f)
 
 
 /****************************************************************************
@@ -151,4 +147,13 @@ ILI9341_CMD(0xE1, 0xD0, 0x00, 0x02, 0x07, 0x0a, 0x28, 0x31, 0x54, 0x47, 0x0E, 0x
 #define RG_CUSTOM_PLATFORM_INIT() \
     /* Arbitrary code executed very early during retro-go init */
 
+/****************************************************************************
+ * Net                                                                      *
+ ****************************************************************************/
+#define RG_NET_SCK                  GPIO_NUM_38
+#define RG_NET_CS                   GPIO_NUM_37
+#define RG_NET_MOSI                 GPIO_NUM_25
+#define RG_NET_MISO                 GPIO_NUM_24
+#define RG_NET_HS                   GPIO_NUM_17
+#define FRAME_BUFFER_SIZE           1024
 // See components/retro-go/config.h for more things you can define here!

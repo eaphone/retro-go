@@ -185,6 +185,7 @@ void storage_init(void);
 void input_init(void);
 void input_process(void);  /* New retro-go based input processing */
 void i2s_main(void);
+void audio_submit_frame(void);  /* Submit audio via rg_audio */
 
 static int pc_main(const char *file)
 {
@@ -245,6 +246,9 @@ static int pc_main(const char *file)
         
 		/* Process retro-go gamepad input */
 		input_process();
+
+		/* Generate and submit audio samples */
+		audio_submit_frame();
 
 		/* Step the emulator */
 		pc_step(pc);
@@ -371,6 +375,9 @@ void tiny386_start(const char *config_path)
 
 	/* Initialize storage: get SD card handle from retro-go when available */
 	storage_init();
+
+	/* Start audio task (rg_audio integration) */
+	i2s_main();
 
 	if (psram) {
 		xTaskCreatePinnedToCore(i386_task, "i386_main", 16384, &config, 3, NULL, 1);

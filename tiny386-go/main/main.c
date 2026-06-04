@@ -15,7 +15,6 @@
 #include <stdlib.h>
 
 #define AUDIO_SAMPLE_RATE (44100)
-
 static rg_app_t *app;
 
 /* Input mode: 0 = joystick (arrows + A/B as Enter/Esc),
@@ -125,7 +124,6 @@ void app_main(void)
             .reset = &reset_handler,
             .screenshot = &screenshot_handler,
             .event = &event_handler,
-            .options = &options_handler,
             .about = &about_handler,
         },
     });

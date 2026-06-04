@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -75,6 +76,9 @@ static int64_t arrow_press_time = 0;
 static int64_t arrow_last_repeat = 0;
 static int arrow_held_key = 0;
 
+/* Flag indicating retro-go menu is active */
+bool is_rg_menu = false;
+
 /* Helper: send a PS/2 key press (is_down=1) or release (is_down=0) */
 static inline void send_key(int is_down, int keycode)
 {
@@ -97,13 +101,17 @@ void input_process(void)
     /* Check for Menu/Option buttons to open retro-go's own menus */
     if (joystick == RG_KEY_MENU)
     {
+        is_rg_menu=true;
         rg_gui_game_menu();
+        is_rg_menu=false;
         prev_joystick = joystick;
         return;
     }
     if (joystick == RG_KEY_OPTION)
     {
+        is_rg_menu=true;
         rg_gui_options_menu();
+        is_rg_menu=false;
         prev_joystick = joystick;
         return;
     }
@@ -116,20 +124,20 @@ void input_process(void)
     int select_pressed = (joystick & RG_KEY_SELECT) != 0;
 
     /* Handle Start button */
-    if (pressed & RG_KEY_START)
-    {
-        if (vk_active) {
-            vk_handle_input('S');
-        } else if (select_pressed) {
-            vk_enter();
-        } else if (menu_active) {
-            menu_exit();
-            emu_paused = 0;
-        } else {
-            menu_enter();
-            emu_paused = 1;
-        }
-    }
+    //if (pressed & RG_KEY_START)
+    //{
+    //    if (vk_active) {
+    //        vk_handle_input('S');
+    //    } else if (select_pressed) {
+    //        vk_enter();
+    //    } else if (menu_active) {
+    //        menu_exit();
+    //        emu_paused = 0;
+    //    } else {
+    //        menu_enter();
+    //        emu_paused = 1;
+    //    }
+    //}
 
     /* Process directional keys (with repeat support) */
     int dir_pressed = 0;

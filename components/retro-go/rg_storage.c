@@ -38,6 +38,14 @@
 static bool disk_mounted = false;
 #if defined(RG_STORAGE_SDSPI_HOST) || defined(RG_STORAGE_SDMMC_HOST)
 static sdmmc_card_t *card_handle = NULL;
+
+/** @brief Expose the SD card handle for raw sector access.
+ *  Used by emulators that support direct SD card I/O (e.g. tiny386).
+ *  Returns NULL if the card was not initialized or not in SPI mode. */
+void *rg_storage_get_card_handle(void)
+{
+    return (void *)card_handle;
+}
 #endif
 #if defined(RG_STORAGE_FLASH_PARTITION)
 static wl_handle_t wl_handle = WL_INVALID_HANDLE;

@@ -15,6 +15,7 @@
 extern int vk_active;
 extern int vk_need_refresh;
 extern void vk_draw(void);
+extern bool is_rg_menu;  // 是否正在显示 RG 菜单界面
 void pc_vga_step(void *o);
 static const char *TAG = "lcd";
 #define SPI_MAX_CHUNK_SIZE     (4096)  // 每次最多传输 4KB
@@ -455,15 +456,20 @@ void vga_task(void *arg)
     uint32_t frame = 0;
     
     while (1) {
-        if (menu_active) {
-            menu_tick();
-        } else if (vk_active) {
-            pc_vga_step(globals.pc);
-            menu_tick();
-        } else {
-            pc_vga_step(globals.pc);
-            menu_tick();
+        //if (menu_active) {
+        //    menu_tick();
+        //} else if (vk_active) {
+        //    pc_vga_step(globals.pc);
+        //    menu_tick();
+        //} else {
+        //    pc_vga_step(globals.pc);
+        //    menu_tick();
+        //}
+        if (is_rg_menu){
+            vTaskDelay(pdMS_TO_TICKS(16));
+            continue;
         }
+        pc_vga_step(globals.pc);
         
         /* Submit framebuffer to retro-go display every few frames.
          * The redraw() callback handles dirty rectangle updates incrementally,

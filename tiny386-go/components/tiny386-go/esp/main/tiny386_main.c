@@ -147,10 +147,10 @@ Console *console_init(int width, int height)
     Console *c = malloc(sizeof(Console));
     memset(c, 0, sizeof(Console));
     
-    /* Use retro-go surface for display */
+    /* rg_surf should already have been created by tiny386_start() */
     if (!rg_surf) {
-        rg_surf = rg_surface_create(width, height, RG_PIXEL_565_LE, MEM_SLOW|MEM_32BIT);
-        ESP_LOGI(TAG, "Created RG surface: %dx%d at %p", width, height, rg_surf->data);
+        ESP_LOGE(TAG, "RG surface not created yet!");
+        return NULL;
     }
     c->fb = (uint8_t *)rg_surf->data;
     g_framebuffer = c->fb;
@@ -350,7 +350,17 @@ void tiny386_start(const char *config_path)
 		return;
 	}
 
-	/* Allocate PSRAM pool for emulator memory */
+	/* Create RG display surface before allocating the PSRAM pool.
+	 * This ensures rg_surface_create can use MEM_SLOW (PSRAM) before
+	 * we reserve all remaining PSRAM for the emulator bump allocator. */
+	rg_surf = rg_surface_create(LCD_WIDTH, LCD_HEIGHT, RG_PIXEL_565_LE, MEM_SLOW);
+	if (!rg_surf) {
+		fprintf(stderr, "FATAL: Failed to create RG surface\n");
+		return;
+	}
+	ESP_LOGI(TAG, "RG surface: %dx%d at %p", LCD_WIDTH, LCD_HEIGHT, rg_surf->data);
+
+	/* Allocate PSRAM pool for emulator memory (remaining PSRAM) */
 	psram_len = PSRAM_ALLOC_LEN;
 	psram = heap_caps_calloc(1, psram_len, MALLOC_CAP_SPIRAM);
 	if (!psram) {
@@ -359,9 +369,19 @@ void tiny386_start(const char *config_path)
 	}
 	fprintf(stderr, "PSRAM allocated: %p, size=%d\n", psram, psram_len);
 
+	/* Initialize storage: get SD card handle from retro-go when available */
+	storage_init();
+
 	if (psram) {
-		xTaskCreatePinnedToCore(i386_task, "i386_main", 8192, &config, 3, NULL, 1);
+		xTaskCreatePinnedToCore(i386_task, "i386_main", 16384, &config, 3, NULL, 1);
 		xTaskCreatePinnedToCore(vga_task, "vga_task", 8192, NULL, 0, NULL, 0);
+		
+		/* Wait for the emulator tasks to complete.
+		 * This prevents app_main() from calling rg_system_exit()
+		 * while the emulator is still running. */
+		while (1) {
+			vTaskDelay(pdMS_TO_TICKS(1000));
+		}
 	} else {
 		fprintf(stderr, "FATAL: No PSRAM available\n");
 	}

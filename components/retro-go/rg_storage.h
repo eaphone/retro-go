@@ -61,6 +61,10 @@ typedef struct
 
 void rg_storage_init(void);
 void rg_storage_deinit(void);
+/** @brief Get the raw SD card handle for direct sector access.
+ *  Returns NULL if no SD card is available.
+ *  The returned type is sdmmc_card_t* from driver/sdmmc_types.h. */
+void *rg_storage_get_card_handle(void);
 bool rg_storage_format(void);
 bool rg_storage_ready(void);
 void rg_storage_commit(void);

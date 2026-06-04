@@ -56,11 +56,20 @@ static bool screenshot_handler(const char *filename, int width, int height)
     return false;
 }
 
+/* RG surface is created in tiny386_main.c */
+extern rg_surface_t *rg_surf;
+
 static void event_handler(int event, void *arg)
 {
     if (event == RG_EVENT_REDRAW)
     {
-        /* Request redraw */
+        /* Force a full framebuffer submission to restore the display
+         * after the retro-go menu overlay has been dismissed. */
+        if (rg_surf)
+        {
+            rg_surf->offset = 0;
+            rg_display_submit(rg_surf, 0);
+        }
     }
 }
 

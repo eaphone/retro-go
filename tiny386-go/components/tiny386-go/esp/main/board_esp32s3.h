@@ -12,7 +12,7 @@
 #define LCD_WIDTH  320
 #define LCD_HEIGHT 240
 
-// PSRAM bump-allocator pool (guest RAM 6 MB + overhead)
+// PSRAM bump-allocator pool (guest RAM 6 MB + overhead, surface is separate)
 #define PSRAM_ALLOC_LEN (int)(6.5 * 1024 * 1024)
 
 // SD card: SPI mode via SPI3_HOST

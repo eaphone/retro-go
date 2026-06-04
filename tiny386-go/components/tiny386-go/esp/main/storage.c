@@ -1,10 +1,11 @@
 /*
  * SD/SPI storage for tiny386.
  * 
- * DISABLED when RETRO_GO is defined, since retro-go handles
- * storage initialization (SD card, SPI flash, etc.) itself.
+ * When RETRO_GO is defined, the SD card is managed by retro-go's
+ * rg_storage subsystem. In that case, storage_init() acquires the
+ * SD card handle from retro-go rather than initializing the card
+ * from scratch (which would conflict with retro-go's own mount).
  */
-#ifndef RETRO_GO
 
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
@@ -36,6 +37,9 @@ static esp_err_t sdcard_do_transaction(int slot, sdmmc_command_t *cmdinfo)
     }
     return ret;
 }
+
+/* ---- Native tiny386 storage_init (used when NOT built under retro-go) ---- */
+#ifndef RETRO_GO
 
 void storage_init(void)
 {
@@ -161,11 +165,34 @@ void storage_init(void)
         };
         esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/spiflash", "storage",
                                                          &spiflash_cfg, &s_wl_handle);
-                if (ret == ESP_OK) {
+                                if (ret == ESP_OK) {
             ESP_LOGI(TAG, "SPIFFS mounted successfully");
         } else {
             ESP_LOGW(TAG, "SPIFFS mount/format failed: 0x%x", ret);
         }
+    }
+}
+
+#endif /* RETRO_GO */
+
+/* ---- RETRO_GO version: obtain SD card handle from retro-go ---- */
+#ifdef RETRO_GO
+#include <rg_storage.h>
+
+void storage_init(void)
+{
+    ESP_LOGI(TAG, "Obtaining SD card handle from retro-go...");
+    rawsd = (sdmmc_card_t *)rg_storage_get_card_handle();
+    if (rawsd) {
+        ESP_LOGI(TAG, "SD card handle acquired: %p", rawsd);
+        if (rawsd) {
+            ESP_LOGI(TAG, "SD Card Info:");
+            ESP_LOGI(TAG, "  Name: %s", rawsd->cid.name);
+            ESP_LOGI(TAG, "  Type: %s", (rawsd->ocr) ? "SDHC" : "SDSC");
+            ESP_LOGI(TAG, "  Size: %llu MB", (uint64_t)rawsd->csd.capacity * rawsd->csd.sector_size / (1024 * 1024));
+        }
+    } else {
+        ESP_LOGW(TAG, "No SD card handle available from retro-go");
     }
 }
 #endif /* RETRO_GO */

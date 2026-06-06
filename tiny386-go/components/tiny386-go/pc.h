@@ -13,7 +13,9 @@
 #include "i8042.h"
 #include "misc.h"
 #include "adlib.h"
+#ifdef esp32s3
 #include "ne2000.h"
+#endif
 #include "i8257.h"
 #include "sb16.h"
 #include "pcspk.h"
@@ -55,7 +57,9 @@ typedef struct {
 	PS2KbdState *kbd;
 	PS2MouseState *mouse;
 	AdlibState *adlib;
+#ifdef esp32s3
 	NE2000State *ne2000;
+#endif
 	I8257State *isa_dma, *isa_hdma;
 	SB16State *sb16;
 	PCSpkState *pcspk;

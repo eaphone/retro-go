@@ -2,7 +2,7 @@ This is a very early "port" whose performance could be improved by adapting retr
 
 Networking has not been tested yet, so build the image without it:
 
-command to build: `python rg_tool.py --target esp32-p4 build-img --no-networking`
+command to build: `python rg_tool.py --target esp32-p4-devkit build-img --no-networking`
 
 ESP-IDF v5.5 is recommended.
 

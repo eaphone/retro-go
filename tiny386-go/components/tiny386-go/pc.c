@@ -192,13 +192,19 @@ static u8 pc_io_read(void *o, int addr)
 	case 0x304: case 0x305: case 0x306: case 0x307:
 	case 0x308: case 0x309: case 0x30a: case 0x30b:
 	case 0x30c: case 0x30d: case 0x30e: case 0x30f:
+    #ifdef RG_TARGET_ESP32_P4_DEVKIT
 		val = ne2000_ioport_read(pc->ne2000, addr);
+	#endif
 		return val;
 	case 0x310:
+    #ifdef RG_TARGET_ESP32_P4_DEVKIT
 		val = ne2000_asic_ioport_read(pc->ne2000, addr);
+	#endif
 		return val;
 	case 0x31f:
+    #ifdef RG_TARGET_ESP32_P4_DEVKIT
 		val = ne2000_reset_ioport_read(pc->ne2000, addr);
+	#endif
 		return val;
 	case 0x00: case 0x01: case 0x02: case 0x03:
 	case 0x04: case 0x05: case 0x06: case 0x07:
@@ -266,7 +272,9 @@ static u16 pc_io_read16(void *o, int addr)
 		val = i440fx_read_data(pc->i440fx, addr - 0xcfc, 1);
 		return val;
 	case 0x310:
+    #ifdef RG_TARGET_ESP32_P4_DEVKIT
 		val = ne2000_asic_ioport_read(pc->ne2000, addr);
+	#endif
 		return val;
 	case 0x220:
 		return adlib_read(pc->adlib, addr);
@@ -410,13 +418,19 @@ static void pc_io_write(void *o, int addr, u8 val)
 	case 0x304: case 0x305: case 0x306: case 0x307:
 	case 0x308: case 0x309: case 0x30a: case 0x30b:
 	case 0x30c: case 0x30d: case 0x30e: case 0x30f:
+    #ifdef esp32s3
 		ne2000_ioport_write(pc->ne2000, addr, val);
+	#endif
 		return;
 	case 0x310:
+    #ifdef esp32s3
 		ne2000_asic_ioport_write(pc->ne2000, addr, val);
+	#endif
 		return;
 	case 0x31f:
+    #ifdef esp32s3
 		ne2000_reset_ioport_write(pc->ne2000, addr, val);
+	#endif
 		return;
 	case 0x00: case 0x01: case 0x02: case 0x03:
 	case 0x04: case 0x05: case 0x06: case 0x07:
@@ -492,7 +506,9 @@ static void pc_io_write16(void *o, int addr, u16 val)
 		i440fx_write_data(pc->i440fx, addr - 0xcfc, val, 1);
 		return;
 	case 0x310:
+    #ifdef esp32s3
 		ne2000_asic_ioport_write(pc->ne2000, addr, val);
+	#endif
 		return;
 	default:
 		fprintf(stderr, "outw 0x%x => 0x%x\n", val, addr);
@@ -566,7 +582,9 @@ void pc_step(PC *pc)
 	if (pc->enable_serial)
 		u8250_update(pc->serial);
 	kbd_step(pc->i8042);
+    #ifdef esp32s3
 	ne2000_step(pc->ne2000);
+	#endif
 	i8257_dma_run(pc->isa_dma);
 	i8257_dma_run(pc->isa_hdma);
 	cpu_step(pc->cpu, PC_STEP_COUNT);
@@ -804,7 +822,9 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 			       1, 12, pc->pic, set_irq,
 			       pc, pc_reset_request);
 	pc->adlib = adlib_new();
+    #ifdef esp32s3
 	pc->ne2000 = isa_ne2000_init(0x300, 9, pc->pic, set_irq);
+	#endif
 	pc->isa_dma = i8257_new(pc->phys_mem, pc->phys_mem_size,
 				0x00, 0x80, 0x480, 0);
 	pc->isa_hdma = i8257_new(pc->phys_mem, pc->phys_mem_size,

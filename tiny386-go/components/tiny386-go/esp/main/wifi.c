@@ -6,6 +6,8 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
+
+#ifdef esp32s3
 #include <string.h>
 #include <stdatomic.h>
 #include "freertos/FreeRTOS.h"
@@ -253,3 +255,4 @@ void wifi_main(const char *ssid, const char *pass)
 	wifi_init_sta(ssid, pass);
 	xTaskCreatePinnedToCore(server_thread, "wifi", 4096, NULL, 1, NULL, 0);
 }
+#endif

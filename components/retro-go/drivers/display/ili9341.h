@@ -115,12 +115,15 @@ static void spi_init(void)
         xQueueSend(spi_buffers, &buffer, portMAX_DELAY);
     }
 
-    const spi_bus_config_t buscfg = {
+        const spi_bus_config_t buscfg = {
         .miso_io_num = RG_GPIO_LCD_MISO,
         .mosi_io_num = RG_GPIO_LCD_MOSI,
         .sclk_io_num = RG_GPIO_LCD_CLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
+    #ifdef RG_TARGET_ESP32_P4_DEVKIT
+        .max_transfer_sz = SPI_BUFFER_LENGTH * SPI_BUFFER_COUNT,
+    #endif
     };
 
     const spi_device_interface_config_t devcfg = {

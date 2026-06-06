@@ -22,7 +22,7 @@ PROJECT_APPS = {
   # Project name  Type, SubType, Size
   'updater':      [0, 0,  393216],
   'launcher':     [0, 16, 1048576],
-  'retro-core':   [0, 16, 851968],
+  'retro-core':   [0, 16, 1310720],
   'prboom-go':    [0, 16, 851968],
   'snes9x':       [0, 16, 655360],
   'gwenesis':     [0, 16, 1048576],

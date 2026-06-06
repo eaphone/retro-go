@@ -123,3 +123,7 @@ To get intellisense working properly you have to define some paths in your *glob
 ````
 
 Clangd is not supported at this time because I have not found a way to make it work well in our multi-folder workspace.
+
+
+# esp32p4
+export PATH="/home/eaphone/.espressif/tools/riscv32-esp-elf/esp-14.2.0_20260121/riscv32-esp-elf/bin:$PATH"

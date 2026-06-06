@@ -1,6 +1,6 @@
 /* Configuration for the ESP32-P4 dev board
  * The GPIOs were chosen arbitrarily, but you can choose whatever you want thanks to the I/O MUX
- * command to build: python rg_tool.py --target esp32-p4 build-img --no-networking
+ * command to build: python rg_tool.py --target esp32-p4-devkit build-img --no-networking
 */
 
 /****************************************************************************
@@ -13,7 +13,7 @@
  * Status LED                                                               *
  ****************************************************************************/
 #define RG_LED_DRIVER               1   // 1 = GPIO
-#define RG_GPIO_LED                 GPIO_NUM_21
+#define RG_GPIO_LED                 GPIO_NUM_NC
 // #define RG_GPIO_LED_INVERT          // Uncomment if the LED is active LOW
 
 
@@ -59,35 +59,33 @@
  * Video                                                                    *
  ****************************************************************************/
 #define RG_SCREEN_DRIVER            0   // 0 = ILI9341/ST7789
+#define RG_SCREEN_PIXEL_FORMAT      0   // Possible values are 0=565_BE, 1=565_LE
 #define RG_SCREEN_HOST              SPI3_HOST
-#define RG_SCREEN_SPEED             SPI_MASTER_FREQ_80M // SPI_MASTER_FREQ_40M
-#define RG_SCREEN_BACKLIGHT         0
+#define RG_SCREEN_SPEED             SPI_MASTER_FREQ_80M // SPI_MASTER_FREQ_80M
+#define RG_SCREEN_BACKLIGHT         1
 #define RG_SCREEN_WIDTH             320
 #define RG_SCREEN_HEIGHT            240
-#define RG_SCREEN_ROTATION          0   // Possible values are 0-7 (you'll have to experiment)
-#define RG_SCREEN_RGB_BGR           1   // Possible values are 0-1 (change if colors are bad)
-#define RG_SCREEN_PIXEL_FORMAT      0   // Possible values are 0=565_BE, 1=565_LE
-#define RG_SCREEN_VISIBLE_AREA      {0, 0, 0, 0}  // Left, Top, Right, Bottom
-#define RG_SCREEN_SAFE_AREA         {0, 0, 0, 0}  // Left, Top, Right, Bottom
-#define RG_SCREEN_PARTIAL_UPDATES   1
-#define RG_SCREEN_INIT()                                                                                     \
-ILI9341_CMD(0xCF, 0x00, 0xc3, 0x30);                                                                         \
-ILI9341_CMD(0xED, 0x64, 0x03, 0x12, 0x81);                                                                   \
-ILI9341_CMD(0xE8, 0x85, 0x00, 0x78);                                                                         \
-ILI9341_CMD(0xCB, 0x39, 0x2c, 0x00, 0x34, 0x02);                                                             \
-ILI9341_CMD(0xF7, 0x20);                                                                                     \
-ILI9341_CMD(0xEA, 0x00, 0x00);                                                                               \
-ILI9341_CMD(0xC0, 0x1B);                 /* Power control   //VRH[5:0] */                                    \
-ILI9341_CMD(0xC1, 0x12);                 /* Power control   //SAP[2:0];BT[3:0] */                            \
-ILI9341_CMD(0xC5, 0x32, 0x3C);           /* VCM control */                                                   \
-ILI9341_CMD(0xC7, 0x91);                 /* VCM control2 */                                                  \
-ILI9341_CMD(0xB1, 0x00, 0x10);           /* Frame Rate Control (1B=70, 1F=61, 10=119) */                     \
-ILI9341_CMD(0xB6, 0x0A, 0xA2);           /* Display Function Control */                                      \
-ILI9341_CMD(0xF6, 0x01, 0x30);                                                                               \
-ILI9341_CMD(0xF2, 0x00); /* 3Gamma Function Disable */                                                       \
-ILI9341_CMD(0x26, 0x01); /* Gamma curve selected */                                                          \
-ILI9341_CMD(0xE0, 0xD0, 0x00, 0x02, 0x07, 0x0a, 0x28, 0x32, 0x44, 0x42, 0x06, 0x0e, 0x12, 0x14, 0x17);       \
-ILI9341_CMD(0xE1, 0xD0, 0x00, 0x02, 0x07, 0x0a, 0x28, 0x31, 0x54, 0x47, 0x0E, 0x1C, 0x17, 0x1b, 0x1e);
+#define RG_SCREEN_ROTATE            0
+#define RG_SCREEN_VISIBLE_AREA      {0, 0, 0, 0}
+#define RG_SCREEN_SAFE_AREA         {0, 0, 0, 0}
+//#define RG_SCREEN_PARTIAL_UPDATES   1
+#define RG_SCREEN_INIT()                                                                                             \
+    rg_task_delay(120);                                                                                              \
+    /* Sleep Out (0x11) */                                                                                           \
+    ILI9341_CMD(0x11);                                                                                               \
+    rg_task_delay(120);                                                                                              \
+    /* MADCTL (0x36) - MY=1, MX=1, MV=1, BGR=1 (180deg rotate, BGR order) */                                       \
+    ILI9341_CMD(0x36, 0x60);                                                                                        \
+    /* COLMOD (0x3A) - 16-bit RGB565 */                                                                             \
+    ILI9341_CMD(0x3A, 0x05);                                                                                        \
+    /* RAMCTRL (0xB0) - set big-endian RGB565 */                                                                 \
+    ILI9341_CMD(0xB0, 0x00, 0xF0);                                                                                  \
+    /* Gamma curve selected */                                                                                       \
+    ILI9341_CMD(0x26, 0x01);                                                                                       \
+    ILI9341_CMD(0x20, 0x00);                                                                                        \
+    ILI9341_CMD(0x13, 0x00);                                                                                        \
+    /* Power Control VRH[5:0] */                                                                                    \
+    rg_task_delay(50);
 
 #define RG_GPIO_LCD_MISO            GPIO_NUM_NC
 #define RG_GPIO_LCD_MOSI            GPIO_NUM_18

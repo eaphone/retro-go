@@ -180,7 +180,9 @@ static void redraw(void *opaque, int x, int y, int w, int h)
 
 void *esp_psram_get(size_t *size);
 void vga_task(void *arg);
+#ifdef esp32s3
 void wifi_main(const char *, const char *);
+#endif
 void storage_init(void);
 void input_init(void);
 void input_process(void);  /* New retro-go based input processing */

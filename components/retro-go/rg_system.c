@@ -558,7 +558,7 @@ rg_app_t *rg_system_init(const rg_config_t *config)
 #endif
 
 #ifdef RG_ENABLE_NETPLAY
-    rg_netplay_init(app.handlers.event);
+    rg_netplay_init((netplay_callback_t)app.handlers.event);
 #endif
 
     update_memory_statistics();

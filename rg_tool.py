@@ -21,8 +21,8 @@ PROJECT_ICON = os.getenv("PROJECT_ICON", "assets/icon.raw")
 PROJECT_APPS = {
   # Project name  Type, SubType, Size
   'updater':      [0, 0,  393216],
-  'launcher':     [0, 16, 1048576],
-  'retro-core':   [0, 16, 1310720],
+  'launcher':     [0, 16, 1572864],
+  'retro-core':   [0, 16, 1769472],
   'prboom-go':    [0, 16, 851968],
   'snes9x':       [0, 16, 655360],
   'gwenesis':     [0, 16, 1048576],

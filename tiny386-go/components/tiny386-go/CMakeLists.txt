@@ -59,6 +59,7 @@ set_source_files_properties("esp/main/lcd_elecrow7s3.c" PROPERTIES COMPILE_FLAGS
 set_source_files_properties("esp/main/lcd_st7701.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
 
 # Add definitions
+add_definitions(-DRETRO_GO=1)
 add_definitions(-DI386_ENABLE_FPU)
 add_definitions(-DUSE_FMOPL)
 

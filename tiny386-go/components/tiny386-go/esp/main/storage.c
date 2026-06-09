@@ -177,6 +177,7 @@ void storage_init(void)
 
 /* ---- RETRO_GO version: obtain SD card handle from retro-go ---- */
 #ifdef RETRO_GO
+#include "rg_system.h"
 #include <rg_storage.h>
 
 void storage_init(void)

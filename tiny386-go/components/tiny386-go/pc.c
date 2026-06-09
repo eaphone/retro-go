@@ -755,13 +755,13 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 				ret = ide_attach_cd(pc->ide, i, disks[i]);
 			else
 				ret = ide_attach(pc->ide, i, disks[i]);
-			assert(ret == 0);
+			if (ret != 0) printf("IDE0 disk %d: Failed to attach '%s'\n", i, disks[i]);
 		} else {
 			if (conf->iscd[i])
 				ret = ide_attach_cd(pc->ide2, i - 2, disks[i]);
 			else
 				ret = ide_attach(pc->ide2, i - 2, disks[i]);
-			assert(ret == 0);
+			if (ret != 0) printf("IDE1 disk %d: Failed to attach '%s'\n", i - 2, disks[i]);
 		}
 	}
 
@@ -803,7 +803,9 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 			continue;
 		int ret;
 		ret = emulink_attach_floppy(pc->emulink, i, fdd[i]);
-		assert(ret == 0);
+		if (ret != 0) {
+			printf("Floppy %d: Failed to attach '%s' (err=%d)\n", i, fdd[i], ret);
+		}
 	}
 
 	cb->iomem = pc;

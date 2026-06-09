@@ -2110,7 +2110,10 @@ extern void *rawsd;
 static BlockDevice *block_device_init_espsd(int64_t start_sector, int64_t nb_sectors)
 {
     sdmmc_card_t *card = rawsd;
-    assert(card);
+    if (!card) {
+        printf("IDE: No SD card detected, IDE disabled\n");
+        return NULL;
+    }
     assert(card->csd.sector_size == 512);
     BlockDevice *bs;
     BlockDeviceESPSD *bf;
@@ -2156,6 +2159,7 @@ int ide_attach(IDEIFState *s, int drive, const char *filename)
     BlockDevice *bs;
     if (strcmp(filename, "/dev/mmcblk0") == 0) {
         bs = block_device_init_espsd(0, -1);
+        if (!bs) return -1;
     } else {
         bs = block_device_init(filename, BF_MODE_RW);
     }

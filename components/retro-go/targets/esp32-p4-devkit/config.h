@@ -30,14 +30,24 @@
  * Storage                                                                  *
  ****************************************************************************/
 #define RG_STORAGE_ROOT             "/sd"
-#define RG_STORAGE_SDMMC_HOST       SDMMC_HOST_SLOT_1
-#define RG_STORAGE_SDMMC_SPEED      SDMMC_FREQ_HIGHSPEED
-#define RG_GPIO_SDMMC_CLK           GPIO_NUM_7
-#define RG_GPIO_SDMMC_CMD	        GPIO_NUM_8
-#define RG_GPIO_SDMMC_D0	        GPIO_NUM_6
-#define RG_GPIO_SDMMC_D1	        GPIO_NUM_5
-#define RG_GPIO_SDMMC_D2	        GPIO_NUM_10
-#define RG_GPIO_SDMMC_D3	        GPIO_NUM_9
+//#define SD_USE_SPI                   0 
+#ifdef SD_USE_SPI
+    #define RG_STORAGE_SDSPI_HOST       SPI3_HOST
+    #define RG_STORAGE_SDSPI_SPEED      SDMMC_FREQ_DEFAULT
+    #define RG_GPIO_SDSPI_MISO          GPIO_NUM_8
+    #define RG_GPIO_SDSPI_MOSI          GPIO_NUM_6
+    #define RG_GPIO_SDSPI_CLK           GPIO_NUM_7
+    #define RG_GPIO_SDSPI_CS            GPIO_NUM_9
+#else
+    #define RG_STORAGE_SDMMC_HOST       SDMMC_HOST_SLOT_1
+    #define RG_STORAGE_SDMMC_SPEED      SDMMC_FREQ_HIGHSPEED
+    #define RG_GPIO_SDMMC_CLK           GPIO_NUM_7
+    #define RG_GPIO_SDMMC_CMD	        GPIO_NUM_8
+    #define RG_GPIO_SDMMC_D0	        GPIO_NUM_6
+    #define RG_GPIO_SDMMC_D1	        GPIO_NUM_5
+    #define RG_GPIO_SDMMC_D2	        GPIO_NUM_10
+    #define RG_GPIO_SDMMC_D3	        GPIO_NUM_9
+#endif
 // #define RG_STORAGE_FLASH_PARTITION  "vfs"
 
 
@@ -58,9 +68,17 @@
 /****************************************************************************
  * Video                                                                    *
  ****************************************************************************/
+#define RG_GPIO_LCD_MISO            GPIO_NUM_NC
+#define RG_GPIO_LCD_MOSI            GPIO_NUM_18
+#define RG_GPIO_LCD_CLK             GPIO_NUM_19
+#define RG_GPIO_LCD_CS              GPIO_NUM_20
+#define RG_GPIO_LCD_DC              GPIO_NUM_21
+#define RG_GPIO_LCD_RST             GPIO_NUM_22
+#define RG_GPIO_LCD_BCKL            GPIO_NUM_23
+
 #define RG_SCREEN_DRIVER            0   // 0 = ILI9341/ST7789
 #define RG_SCREEN_PIXEL_FORMAT      0   // Possible values are 0=565_BE, 1=565_LE
-#define RG_SCREEN_HOST              SPI3_HOST
+#define RG_SCREEN_HOST              SPI2_HOST
 #define RG_SCREEN_SPEED             SPI_MASTER_FREQ_80M // SPI_MASTER_FREQ_80M
 #define RG_SCREEN_BACKLIGHT         1
 #define RG_SCREEN_WIDTH             320
@@ -87,13 +105,6 @@
     /* Power Control VRH[5:0] */                                                                                    \
     rg_task_delay(50);
 
-#define RG_GPIO_LCD_MISO            GPIO_NUM_NC
-#define RG_GPIO_LCD_MOSI            GPIO_NUM_18
-#define RG_GPIO_LCD_CLK             GPIO_NUM_19
-#define RG_GPIO_LCD_CS              GPIO_NUM_20
-#define RG_GPIO_LCD_DC              GPIO_NUM_21
-#define RG_GPIO_LCD_RST             GPIO_NUM_22
-#define RG_GPIO_LCD_BCKL            GPIO_NUM_23
 // #define RG_GPIO_LCD_BCKL_INVERT  // Uncomment if the LED is active LOW
 
 
@@ -108,13 +119,10 @@
     {RG_KEY_DOWN,   .num = GPIO_NUM_39, .pullup = 1, .level = 0},\
     {RG_KEY_SELECT, .num = GPIO_NUM_43, .pullup = 1, .level = 0},\
     {RG_KEY_START,  .num = GPIO_NUM_42, .pullup = 1, .level = 0},\
-    {RG_KEY_MENU,   .num = GPIO_NUM_NC, .pullup = 1, .level = 0},\
+    {RG_KEY_MENU,   .num = GPIO_NUM_46, .pullup = 1, .level = 0},\
+    {RG_KEY_OPTION, .num = GPIO_NUM_47, .pullup = 1, .level = 0},\
     {RG_KEY_A,      .num = GPIO_NUM_44, .pullup = 1, .level = 0},\
     {RG_KEY_B,      .num = GPIO_NUM_45, .pullup = 1, .level = 0},\
-    {RG_KEY_X,      .num = GPIO_NUM_46, .pullup = 1, .level = 0},\
-    {RG_KEY_Y,      .num = GPIO_NUM_47, .pullup = 1, .level = 0},\
-    {RG_KEY_L,      .num = GPIO_NUM_NC, .pullup = 1, .level = 0},\
-    {RG_KEY_R,      .num = GPIO_NUM_NC,  .pullup = 1, .level = 0},\
 }
 
 

@@ -12,9 +12,6 @@
 #define SDCARD_DO_TRANSACTION sdspi_host_do_transaction
 #elif defined(RG_STORAGE_SDMMC_HOST)
 #include <driver/sdmmc_host.h>
-#ifdef CONFIG_IDF_TARGET_ESP32P4
-#include "sd_pwr_ctrl_by_on_chip_ldo.h"
-#endif
 #define SDCARD_DO_TRANSACTION sdmmc_host_do_transaction
 #endif
 
@@ -135,20 +132,6 @@ void rg_storage_init(void)
     host_config.slot = RG_STORAGE_SDMMC_HOST;
     host_config.max_freq_khz = RG_STORAGE_SDMMC_SPEED;
     host_config.do_transaction = &sdcard_do_transaction;
-
-#ifdef CONFIG_IDF_TARGET_ESP32P4
-    sd_pwr_ctrl_ldo_config_t ldo_config = {
-        .ldo_chan_id = 4,
-    };
-    sd_pwr_ctrl_handle_t pwr_ctrl_handle = NULL;
-
-    esp_err_t ret = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &pwr_ctrl_handle);
-    if (ret != ESP_OK) {
-        RG_LOGE("Failed to create a new on-chip LDO power control driver");
-        return;
-    }
-    host_config.pwr_ctrl_handle = pwr_ctrl_handle;
-#endif
 
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_config.width = 1;

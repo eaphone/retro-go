@@ -6,8 +6,16 @@
 #include <string.h>
 
 #ifdef BUILD_ESP32
+#ifdef TINY386_NO_IRAM
+// ESP32-P4 has very limited sram_low (~179KB), keep CPU emulator in flash
+#define IRAM_ATTR
+#define IRAM_ATTR_CPU_EXEC1
+#define DRAM_ATTR
+#define noinline __attribute__((noinline))
+#else
 #include "esp_attr.h"
 #define noinline __attribute__((noinline))
+#endif
 #else
 #define IRAM_ATTR
 #define IRAM_ATTR_CPU_EXEC1

@@ -36,9 +36,16 @@ extern int scroll_active;
 #include "pci.h"
 
 #ifdef BUILD_ESP32
+#ifdef TINY386_NO_IRAM
+// ESP32-P4 has very limited sram_low (~179KB), keep VGA code in flash
+#define IRAM_ATTR
+#define pcmalloc(size) malloc(size)
+#define RETRACE_INTERVAL_US 5000
+#else
 #include "esp_attr.h"
 void *pcmalloc(long size);
 #define RETRACE_INTERVAL_US 5000
+#endif
 #else
 #define IRAM_ATTR
 #define pcmalloc malloc

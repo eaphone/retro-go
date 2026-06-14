@@ -59,10 +59,54 @@ static int8_t smooth_index=SMOOTH_COUNT;
         gamepad_mapped |= keymap[i].key;          \
 
 #ifdef ESP_PLATFORM
+#ifdef RG_BATTERY_KEY
+void ip5306_key_init(void)
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RG_BATTERY_KEY),
+        .mode = GPIO_MODE_OUTPUT_OD,        // 开漏输出模式
+        .pull_up_en = GPIO_PULLUP_DISABLE,  // 禁用内部上拉
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // 禁用内部下拉
+        .intr_type = GPIO_INTR_DISABLE      // 不使用中断
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    
+    // 初始状态：高电平（开漏模式下=高阻态，相当于按键松开）
+    gpio_set_level(RG_BATTERY_KEY, 1);
+}
+
+/**
+ * @brief 模拟一次短按动作
+ *        开漏模式下，低电平 = 导通NMOS = 拉低KEY引脚 = 按键按下
+ *        开漏模式下，高电平 = 关断NMOS = KEY引脚浮空(由IP5306内部上拉) = 按键松开
+ */
+void ip5306_short_press(void)
+{
+    // 按键按下：输出低电平
+    gpio_set_level(RG_BATTERY_KEY, 0);
+    
+    // 保持按下状态 (100ms)
+    rg_task_delay(100);
+    
+    // 按键松开：输出高电平（开漏模式下=高阻态）
+    gpio_set_level(RG_BATTERY_KEY, 1);
+    
+    // 确保松开后稳定一小段时间
+    rg_task_delay(10);
+}
+void keep_ip5306_alive_task(void *pvParameters)
+{
+    while (1) {
+        rg_task_delay(20000);  // 等待20秒
+        ip5306_short_press();              // 执行短按刷新
+    }
+}
+#endif
 static inline bool _adc_setup_channel(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, bool calibrate)
 {
     RG_ASSERT(unit == ADC_UNIT_1 || unit == ADC_UNIT_2, "Invalid ADC unit");
     esp_err_t err = ESP_FAIL;
+
 #ifdef USE_ADC_DRIVER_NG
     if (!adc_handles[unit])
     {
@@ -131,6 +175,7 @@ static inline int _adc_get_raw(adc_unit_t unit, adc_channel_t channel)
 #ifdef USE_ADC_DRIVER_NG
     if (adc_oneshot_read(adc_handles[unit], channel, &adc_raw_value) != ESP_OK)
         RG_LOGE("ADC reading failed, this can happen while wifi is active.");
+    adc_raw_value*=2.65f;
 #else
     if (unit == ADC_UNIT_1)
         adc_raw_value = adc1_get_raw(channel);
@@ -439,6 +484,14 @@ void rg_input_init(void)
     UPDATE_GLOBAL_MAP(keymap_serial);
 #endif
 
+
+#ifdef RG_BATTERY_KEY
+    ip5306_key_init();
+    rg_task_delay(100);
+    // 3. 启动IP5306输出（模拟一次短按唤醒）
+    ip5306_short_press();
+    rg_task_create("keep_alive_task", &keep_ip5306_alive_task, NULL, 3 * 1024, 1, RG_TASK_PRIORITY_6, 1);
+#endif
 
 #if RG_BATTERY_DRIVER == 1 /* ADC */
     RG_LOGI("Initializing ADC battery driver...");

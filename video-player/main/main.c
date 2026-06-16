@@ -30,7 +30,7 @@ static void audio_task(void *arg) {
             while (rg_audio_get_driver() < aud_size) {
                 rg_task_delay(10);
             }
-            rg_audio_submit(aud_data, aud_size / (player->info.audio.channels * 2));
+                        rg_audio_submit((const rg_audio_frame_t *)aud_data, aud_size / (player->info.audio.channels * 2));
             free(aud_data);
         } else {
             break; // 音频播放完毕

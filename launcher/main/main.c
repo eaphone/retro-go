@@ -458,6 +458,11 @@ static void about_handler(rg_gui_option_t *dest)
     *dest++ = (rg_gui_option_t)RG_DIALOG_END;
 }
 
+static bool screenshot_handler(const char *filename, int width, int height)
+{
+    return rg_surface_save_image_file(gui.surface, filename, width, height);
+}
+
 void app_main(void)
 {
     app = rg_system_init(&(const rg_config_t){
@@ -468,6 +473,7 @@ void app_main(void)
         .handlers.event = &event_handler,
         .handlers.options = &options_handler,
         .handlers.about = &about_handler,
+        .handlers.screenshot = &screenshot_handler,
         // The launcher makes a lot of small allocations and it sometimes fills internal RAM,
         // causing the SD Card driver to stop working.
         .mallocAlwaysInternal = 1024,

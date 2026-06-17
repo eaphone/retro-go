@@ -20,6 +20,7 @@
 
 extern "C" {
   #include "common.h"
+#include <esp_attr.h>
 }
 
 u16* gba_screen_pixels = NULL;
@@ -956,8 +957,7 @@ static const u8 obj_dim_table[3][4][2] = {
   { {16, 8}, {32, 8}, {32, 16}, {64, 32} },
   { {8, 16}, {8, 32}, {16, 32}, {32, 64} }
 };
-
-static u8 obj_priority_list[5][160][128];
+static u8 EXT_RAM_BSS_ATTR obj_priority_list[5][160][128];
 static u8 obj_priority_count[5][160];
 static u8 obj_alpha_count[160];
 

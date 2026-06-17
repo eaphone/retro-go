@@ -16,9 +16,9 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-
 extern "C" {
   #include "common.h"
+#include <esp_attr.h>
   #include "cpu_instrument.h"
 }
 
@@ -1458,7 +1458,7 @@ u8 ewram[(1024 * 256) << SMC_DETECTION];
 u8 iwram[(1024 * 32) << SMC_DETECTION];
 u8 vram[1024 * 96];
 #endif
-u8 *memory_map_read[8 * 1024];
+u8 *EXT_RAM_BSS_ATTR memory_map_read[8 * 1024];
 u16 io_registers[512];
 #endif
 

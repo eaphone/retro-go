@@ -2219,7 +2219,7 @@ void init_gamepak_buffer(void)
   gamepak_buffer_count = 0;
   while (gamepak_buffer_count < ROM_BUFFER_SIZE)
   {
-    void *ptr = malloc(gamepak_buffer_blocksize);
+    void *ptr = rg_alloc(gamepak_buffer_blocksize, MEM_ANY);
     if (!ptr)
       break;
     gamepak_buffers[gamepak_buffer_count++] = (u8*)ptr;

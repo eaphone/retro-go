@@ -123,7 +123,6 @@ static void options_handler(rg_gui_option_t *dest)
 
 void app_main(void)
 {
-    gba_save_buffer = rg_alloc(GBA_STATE_MEM_SIZE, MEM_ANY);
     app = rg_system_init(&(const rg_config_t){
         .sampleRate = AUDIO_SAMPLE_RATE,
         .frameRate = 60,
@@ -138,11 +137,18 @@ void app_main(void)
             .options = &options_handler,
         },
     });
+    printf("gbsp: app_main START, romPath=%s\n", app->romPath ? app->romPath : "(null)");
+    gba_save_buffer = rg_alloc(GBA_STATE_MEM_SIZE, MEM_ANY);
+    printf("gbsp: gba_save_buffer=%p\n", gba_save_buffer);
+    printf("gbsp: rg_system_init returned, app=%p configNs=%s\n", app, app ? app->configNs : "?");
     // rg_system_set_overclock(2);
 
     sound_master_enable = rg_settings_get_number(NS_APP, SETTING_SOUND_EMULATION, true);
+    printf("gbsp: sound_master_enable=%d\n", sound_master_enable);
 
+    printf("gbsp: creating surface\n");
     updates[0] = rg_surface_create(GBA_SCREEN_WIDTH, GBA_SCREEN_HEIGHT + 1, RG_PIXEL_565_LE, MEM_FAST);
+    printf("gbsp: surface=%p\n", updates[0]);
     updates[0]->height = GBA_SCREEN_HEIGHT;
     // updates[1] = rg_surface_create(GBA_SCREEN_WIDTH, GBA_SCREEN_HEIGHT + 1, RG_PIXEL_565_LE, MEM_FAST);
     // updates[1]->height = GBA_SCREEN_HEIGHT;
@@ -151,6 +157,7 @@ void app_main(void)
     gba_screen_pixels = currentUpdate->data;
 
     gbsp_memory = rg_alloc(sizeof(*gbsp_memory), MEM_ANY);
+    printf("gbsp: gbsp_memory=%p\n", gbsp_memory);
     RG_LOGI("gbsp_memory=%p", gbsp_memory);
 
     libretro_supports_bitmasks = true;
@@ -159,6 +166,7 @@ void app_main(void)
     init_sound();
     // load_bios(RG_BASE_PATH_BIOS "/gba_bios.bin");
 
+    printf("gbsp: calling load_gamepak romPath=%s\n", app->romPath ?: "(null)");
     memset(gamepak_backup, 0xff, sizeof(gamepak_backup));
     if (load_gamepak(NULL, app->romPath, FEAT_DISABLE, FEAT_DISABLE, SERIAL_MODE_DISABLED) != 0)
     {

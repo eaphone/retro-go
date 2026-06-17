@@ -20,15 +20,15 @@ PROJECT_ICON = os.getenv("PROJECT_ICON", "assets/icon.raw")
 PROJECT_APPS = {
   # Project name  Type, SubType, Size
   'updater':      [0, 0,  393216],
-  'launcher':     [0, 16, 1572864],
-  'retro-core':   [0, 16, 1769472],
-  'prboom-go':    [0, 16, 851968],
-  'snes9x':       [0, 16, 655360],
-  'gwenesis':     [0, 16, 1048576],
-  'fmsx':         [0, 16, 655360],
-  'gbsp':         [0, 16, 851968],
-  'tiny386-go':   [0, 16, 2031616],
-  'video-player': [0, 16, 393216],
+  'launcher':     [0, 16,  917504],
+  'retro-core':   [0, 16, 1310720],
+  'prboom-go':    [0, 16, 1179648],
+  'snes9x':       [0, 16,  917504],
+  'gwenesis':     [0, 16, 1376256],
+  'fmsx':         [0, 16, 1089536],
+  'gbsp':         [0, 16, 1048576],
+  'tiny386-go':   [0, 16, 1245184],
+  'video-player': [0, 16,  720896],
 }
 # PROJECT_APPS = {}
 # for t in glob.glob("*/CMakeLists.txt"):

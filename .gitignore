@@ -8,12 +8,11 @@ build/
 /partitions.bin
 /partitions.csv
 /sdkconfig.old
-/sdkconfig
 /*/sdkconfig.old
-/*/sdkconfig
 /*.fw
 /*.img
 /*.zip
+sdkconfig
 
 # SDL2 build
 /sd

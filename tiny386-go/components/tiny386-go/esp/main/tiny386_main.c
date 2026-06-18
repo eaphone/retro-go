@@ -212,12 +212,19 @@ static int pc_main(const char *file, const char *rom_path)
 			if(strncmp(lastname,"hda",3)==0){
 				conf.fdd[0] = NULL;
 				conf.disks[0] = rom_path;
+				conf.iscd[0] = 0;
 			}else if(strncmp(lastname,"hdb",3)==0){
 				conf.disks[1] = rom_path;
+				conf.iscd[1] = 0;
 			}else if(strncmp(lastname,"fda",3)==0){
 				conf.fdd[0] = rom_path;
 			}else{
 				conf.disks[0] = rom_path;
+				conf.iscd[0] = 0;
+			}
+			if (conf.disks[1] && !conf.disks[0]) {
+				conf.disks[0] = conf.disks[1];
+				conf.iscd[0] = 0;
 			}
 		}
 	}

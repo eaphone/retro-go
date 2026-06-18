@@ -570,13 +570,6 @@ void pc_vga_step(void *o)
 			    pc->full_update != 0);
 		if (pc->full_update == 2)
 			pc->full_update = 0;
-#ifdef RETRO_GO
-		/* Retro-go: flush accumulated dirty-rect updates once per frame.
-		 * Without this, redraw() would submit the full surface on every
-		 * partial dirty-rect callback, wasting bandwidth. */
-		extern void rg_display_flush(void);
-		rg_display_flush();
-#endif
 	}
 }
 

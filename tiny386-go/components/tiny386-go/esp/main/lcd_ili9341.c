@@ -461,21 +461,24 @@ void vga_task(void *arg)
             continue;
         }else{
             pc_vga_step(globals.pc);
+#ifdef RETRO_GO
+            /* Flush VGA dirty-rect updates after each refresh cycle.
+             * redraw() only marks dirty; actual submit happens here. */
+            extern void rg_display_flush(void);
+            rg_display_flush();
+#endif
             if (menu_active || vk_active) {
                 menu_tick();
             }
         }
         
-        /* Submit framebuffer to retro-go display every few frames.
-         * The redraw() callback handles dirty rectangle updates incrementally,
-         * but we do a periodic full submit for robustness.
-         * rg_display_submit() will take care of scaling, rotation, etc. */
-        if (frame % 5 == 0 && rg_surf) {
+        frame++;
+        /* Periodic full submit for menu/overlay updates that bypass redraw().
+         * ~10Hz is enough for UI; lower than old 20Hz to save bandwidth. */
+        if (frame % 10 == 0 && rg_surf) {
             rg_surf->offset = 0;
             rg_display_submit(rg_surf, 0);
         }
-        
-        frame++;
         if (frame % 100 == 0) {
             ESP_LOGD(TAG, "Frame %lu", frame);
         }

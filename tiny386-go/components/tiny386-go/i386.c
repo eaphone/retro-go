@@ -7,9 +7,10 @@
 
 #ifdef BUILD_ESP32
 #ifdef TINY386_NO_IRAM
-// ESP32-P4 has very limited sram_low (~179KB), keep CPU emulator in flash
+// ESP32-P4 sram_low is tight; cpu_exec1 is ~50KB too big for IRAM.
+// Keep helpers in flash, use IRAM_ATTR_CPU_EXEC1 only via board header.
 #define IRAM_ATTR
-#define IRAM_ATTR_CPU_EXEC1
+/* IRAM_ATTR_CPU_EXEC1 is set by board header, do NOT redefine */
 #define DRAM_ATTR
 #define noinline __attribute__((noinline))
 #else

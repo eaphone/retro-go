@@ -1,6 +1,10 @@
 #define BUILD_ESP32
 
-#define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
+/* Note: sram_low is too small for full cpu_exec1 (~50KB overflow).
+ * Hot helpers (try_jcc8, store8/16/32) already have IRAM_ATTR but
+ * are disabled by TINY386_NO_IRAM.  Can selectively enable smaller
+ * functions if profiling shows they're worth the IRAM cost. */
+#define IRAM_ATTR_CPU_EXEC1 /* disabled - see comment above */
 
 #define ESPDEBUG
 #define BPP 16

@@ -158,14 +158,7 @@ Console *console_init(int width, int height)
     return c;
 }
 
-/* This is called by VGA emulator to draw dirty rectangles.
- * VGA may call this many times within one vga_refresh() cycle
- * (once per changed text line, or once for the whole graphics frame).
- * To avoid redundant full-surface submits, we defer the actual
- * display transfer to rg_display_flush() which should be called
- * once after each vga_refresh completes. */
-static int g_redraw_dirty = 0;
-
+/* This is called by VGA emulator to draw dirty rectangles */
 static void redraw(void *opaque, int x, int y, int w, int h)
 {
     Console *s = opaque;
@@ -178,16 +171,9 @@ static void redraw(void *opaque, int x, int y, int w, int h)
     if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
     if (w <= 0 || h <= 0) return;
 
-    /* Just mark dirty; actual submit happens in rg_display_flush() */
-    g_redraw_dirty = 1;
-}
-
-/* Call this once after each pc_vga_step() to flush the framebuffer. */
-void rg_display_flush(void)
-{
-    if (g_redraw_dirty && rg_surf) {
-        g_redraw_dirty = 0;
-        rg_surf->offset = 0;
+    /* Submit the whole dirty region to retro-go display */
+    if (rg_surf) {
+        rg_surf->offset = 0; /* Full framebuffer */
         rg_display_submit(rg_surf, 0);
     }
 }
@@ -225,19 +211,15 @@ static int pc_main(const char *file, const char *rom_path)
 		if (lastname){
 			if(strncmp(lastname,"hda",3)==0){
 				conf.fdd[0] = NULL;
-				conf.disks[0] = rom_path;
+				conf.disks[0] = strdup(rom_path);
 				conf.iscd[0] = 0;
 			}else if(strncmp(lastname,"hdb",3)==0){
-				conf.disks[1] = rom_path;
+				conf.disks[1] = strdup(rom_path);
 				conf.iscd[1] = 0;
 			}else if(strncmp(lastname,"fda",3)==0){
-				conf.fdd[0] = rom_path;
+				conf.fdd[0] = strdup(rom_path);
 			}else{
-				conf.disks[0] = rom_path;
-				conf.iscd[0] = 0;
-			}
-			if (conf.disks[1] && !conf.disks[0]) {
-				conf.disks[0] = conf.disks[1];
+				conf.disks[0] = strdup(rom_path);
 				conf.iscd[0] = 0;
 			}
 		}

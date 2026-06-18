@@ -125,16 +125,16 @@ bool gba_load_state(const void* src)
   if (!cpu_check_savestate(srcptr) ||
       !input_check_savestate(srcptr) ||
       !main_check_savestate(srcptr) ||
-      !memory_check_savestate(srcptr) 
-      //||!sound_check_savestate(srcptr)
+      !memory_check_savestate(srcptr) ||
+      !sound_check_savestate(srcptr)
     )
      return false;
 
   if (!(cpu_read_savestate(srcptr) &&
       input_read_savestate(srcptr) &&
       main_read_savestate(srcptr) &&
-      memory_read_savestate(srcptr) 
-      //&&sound_read_savestate(srcptr)
+      memory_read_savestate(srcptr) &&
+      sound_read_savestate(srcptr)
     ))
   {
      // TODO: this should not happen if the validation above is accurate.

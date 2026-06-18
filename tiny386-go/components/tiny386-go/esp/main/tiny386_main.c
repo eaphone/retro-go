@@ -158,7 +158,14 @@ Console *console_init(int width, int height)
     return c;
 }
 
-/* This is called by VGA emulator to draw dirty rectangles */
+/* This is called by VGA emulator to draw dirty rectangles.
+ * VGA may call this many times within one vga_refresh() cycle
+ * (once per changed text line, or once for the whole graphics frame).
+ * To avoid redundant full-surface submits, we defer the actual
+ * display transfer to rg_display_flush() which should be called
+ * once after each vga_refresh completes. */
+static int g_redraw_dirty = 0;
+
 static void redraw(void *opaque, int x, int y, int w, int h)
 {
     Console *s = opaque;
@@ -171,9 +178,16 @@ static void redraw(void *opaque, int x, int y, int w, int h)
     if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
     if (w <= 0 || h <= 0) return;
 
-    /* Submit the whole dirty region to retro-go display */
-    if (rg_surf) {
-        rg_surf->offset = 0; /* Full framebuffer */
+    /* Just mark dirty; actual submit happens in rg_display_flush() */
+    g_redraw_dirty = 1;
+}
+
+/* Call this once after each pc_vga_step() to flush the framebuffer. */
+void rg_display_flush(void)
+{
+    if (g_redraw_dirty && rg_surf) {
+        g_redraw_dirty = 0;
+        rg_surf->offset = 0;
         rg_display_submit(rg_surf, 0);
     }
 }

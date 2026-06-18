@@ -105,7 +105,10 @@ static void cpu_enable_fpu(CPUABS *cpu)
 #ifndef MIXER_BUF_LEN
 #define MIXER_BUF_LEN 128
 #endif
-#define PC_STEP_COUNT 512
+// Increased from 512: fewer pc_step() calls = less loop overhead.
+// VGA task runs on separate core, so display timing is unaffected.
+// Desktop uses 10240; 8192 is safe for ESP32-P4 with 360MHz+.
+#define PC_STEP_COUNT 8192
 void pcmalloc_init(void *ptr, long len);
 #else
 #define MIXER_BUF_LEN 2048
@@ -567,6 +570,13 @@ void pc_vga_step(void *o)
 			    pc->full_update != 0);
 		if (pc->full_update == 2)
 			pc->full_update = 0;
+#ifdef RETRO_GO
+		/* Retro-go: flush accumulated dirty-rect updates once per frame.
+		 * Without this, redraw() would submit the full surface on every
+		 * partial dirty-rect callback, wasting bandwidth. */
+		extern void rg_display_flush(void);
+		rg_display_flush();
+#endif
 	}
 }
 

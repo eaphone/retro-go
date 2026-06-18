@@ -703,7 +703,7 @@ void applications_init(void)
     application("MSX", "msx", "rom mx1 mx2 dsk", "fmsx", 0);
     application("Video Player", "vp", "mp4 avi mkv raw", "video-player", 0);
     // IBM PC/XT/AT emulator (tiny386)
-    application("MS-Dos", "dos", "bat img", "tiny386-go", 0);
+    application("MS-Dos", "dos", "img", "tiny386-go", 0);
 
     // Special app to bootstrap native esp32 binaries from the SD card
     // application("Bootstrap", "apps", "bin elf", "bootstrap", 0);

@@ -189,7 +189,7 @@ void input_process(void);  /* New retro-go based input processing */
 void i2s_main(void);
 void audio_submit_frame(void);  /* Submit audio via rg_audio */
 
-static int pc_main(const char *file)
+static int pc_main(const char *file, const char *rom_path)
 {
 	PCConfig conf;
 	memset(&conf, 0, sizeof(conf));
@@ -199,9 +199,27 @@ static int pc_main(const char *file)
 	conf.fpu = 0;
 
 	int err = ini_parse(file, parse_conf_ini, &conf);
+	
 	if (err) {
 		fprintf(stderr, "FATAL: ini_parse('%s') error %d\n", file, err);
 		return err;
+	}
+	const char *ext = strrchr(rom_path, '.');
+	if (ext && strcmp(ext, ".img") == 0) {
+		fprintf(stdout, "change disks1 %s => %s\n", conf.disks[0], rom_path);
+		conf.disks[0] = rom_path;
+
+		int base_len = (int)(ext - rom_path);  // 不加 -1
+		char out[256];
+		snprintf(out, sizeof(out), "%.*s.bat", base_len, rom_path);
+
+		FILE *file = fopen(out, "r");
+		if (!file) {
+			fprintf(stdout, "disable fdd %s\n", conf.fdd[0]);
+			conf.fdd[0] = NULL;
+		} else {
+			fclose(file);  // 及时关闭
+		}
 	}
 
 	if (conf.bios == NULL && conf.linuxstart == NULL) {
@@ -260,6 +278,7 @@ static int pc_main(const char *file)
 
 struct esp_ini_config {
 	const char *filename;
+	const char *rom_path;
 	char ssid[16];
 	char pass[32];
 };
@@ -275,7 +294,7 @@ static void i386_task(void *arg)
 	                    pdFALSE,
 	                    pdFALSE,
 	                    portMAX_DELAY);
-	int ret = pc_main(config->filename);
+	int ret = pc_main(config->filename, config->rom_path);
 	if (ret != 0) {
 		fprintf(stderr, "FATAL: pc_main failed with %d\n", ret);
 	}
@@ -332,7 +351,7 @@ static int parse_ini(void* user, const char* section,
  * This is the entry point called from retro-go main.c
  * It replaces the original app_main() from tiny386.
  * ============================================================ */
-void tiny386_start(const char *config_path)
+void tiny386_start(const char *config_path, const char *rom_path)
 {
 	ESP_LOGI(TAG, "Starting tiny386 emulator...");
 	ESP_LOGI(TAG, "Config: %s", config_path ? config_path : "(none)");
@@ -346,6 +365,7 @@ void tiny386_start(const char *config_path)
 	if (config_path && config_path[0]) {
 		if (ini_parse(config_path, parse_ini, &config) == 0) {
 			config.filename = config_path;
+			config.rom_path = rom_path;
 			fprintf(stderr, "Using config: %s\n", config_path);
 		} else {
 			fprintf(stderr, "FATAL: Failed to parse config '%s'\n", config_path);

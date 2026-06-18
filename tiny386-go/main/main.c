@@ -24,7 +24,7 @@ static rg_app_t *app;
 static int InputMode = 1;
 
 /* Forward declaration of the tiny386 entry point */
-extern void tiny386_start(const char *config_path);
+extern void tiny386_start(const char *config_path, const char *rom_path);
 
 /* ============================================================
  * Retro-Go handlers
@@ -130,64 +130,39 @@ void app_main(void)
     RG_LOGI("tiny386-go initializing...");
 
     /* If a .bat file was selected directly, generate PLAY.bat to auto-boot it */
-    if (app->romPath && app->romPath[0])
-    {
-        const char *ext = strrchr(app->romPath, '.');
-        if (ext && (strcasecmp(ext, ".bat") == 0))
-        {
-            /* Extract directory name (last folder containing the .bat file) */
-            const char *last_sep = NULL;
-            const char *prev_sep = NULL;
-            for (const char *p = app->romPath; *p; p++)
-            {
-                if (*p == '/' || *p == '\\')
-                {
-                    prev_sep = last_sep;
-                    last_sep = p;
-                }
-            }
+    if (app->romPath && app->romPath[0]) {
+        const char *last_sep = strrchr(app->romPath, '/');
+        const char *dot = strrchr(app->romPath, '.');
 
-            char dir_name[128] = {0};
-            char file_name[128] = {0};
+        // 防御：两个都必须存在，且 dot 必须在 last_sep 之后
+        if (!last_sep || !dot || dot <= last_sep) {
+            RG_LOGE("Invalid rom path format: %s", app->romPath);
+            return;
+        }
 
-            if (last_sep)
-            {
-                if (prev_sep)
-                {
-                    size_t dir_len = last_sep - prev_sep - 1;
-                    if (dir_len < sizeof(dir_name))
-                    {
-                        memcpy(dir_name, prev_sep + 1, dir_len);
-                    }
-                }
-                strncpy(file_name, last_sep + 1, sizeof(file_name) - 1);
-            }
-            else
-            {
-                strncpy(file_name, app->romPath, sizeof(file_name) - 1);
-            }
+        int base_len = (int)(dot - app->romPath);
+        int name_len = (int)(dot - last_sep - 1);  // 文件名不含扩展名的长度
 
+        char out[256];
+        snprintf(out, sizeof(out), "%.*s.bat", base_len, app->romPath);
+
+        const char *filename = last_sep + 1;
+
+        if (rg_storage_exists(out)) {
             char play_path[RG_PATH_MAX + 1];
-            snprintf(play_path, RG_PATH_MAX, RG_BASE_PATH_ROMS "/dos/system/PLAY.bat");
+            snprintf(play_path, RG_PATH_MAX, RG_BASE_PATH_ROMS "/dos/.system/PLAY.bat");
 
-            /* Build content: cd <dir> + <filename>.bat */
             char content[512];
-            if (file_name[0]){
-                int len = snprintf(content, sizeof(content), "cd ..\n%s\n", file_name);
-            
-                if (rg_storage_write_file(play_path, content, len, 0))
-                {
-                    RG_LOGI("Auto-generated PLAY.bat: cd %s -> %s", dir_name, file_name);
-                }
-                else
-                {
-                    RG_LOGE("Failed to write PLAY.bat to %s", play_path);
-                }
+            int len = snprintf(content, sizeof(content),
+                            "cd ..\n%.*s.bat\n", name_len, filename);
+
+            if (rg_storage_write_file(play_path, content, len, 0)) {
+                RG_LOGI("Auto-generated PLAY.bat: %s", content);
+            } else {
+                RG_LOGW("Failed to write PLAY.bat to %s", play_path);
             }
-            else
-            {
-                RG_LOGE("Filename is not valid: %s", app->romPath);
-            }
+        } else {
+            RG_LOGW("Filename is not valid: %s", out);
         }
     }
 
@@ -199,7 +174,7 @@ void app_main(void)
 
     /* Try default config paths */
     const char *paths[] = {
-        RG_BASE_PATH_ROMS "/dos/system/tiny386.ini",
+        RG_BASE_PATH_ROMS "/dos/.system/tiny386.ini",
         NULL,
     };
     for (int i = 0; paths[i]; i++)
@@ -217,14 +192,14 @@ void app_main(void)
         RG_LOGE("No tiny386 config file found!");
         rg_gui_alert("Configuration missing",
             "Place a tiny386.ini config file in:\n"
-            RG_BASE_PATH_ROMS "/tiny386.ini\n"
+            RG_BASE_PATH_ROMS "/dos/.system/tiny386.ini\n"
             "See the tiny386 documentation for details.");
         rg_system_exit();
         return;
     }
 
     /* Start the tiny386 emulator */
-    tiny386_start(config_path);
+    tiny386_start(config_path, app->romPath);
 
     RG_LOGI("tiny386-go exiting...");
     rg_system_exit();

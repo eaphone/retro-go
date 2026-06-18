@@ -153,16 +153,13 @@ void app_main(void)
             snprintf(play_path, RG_PATH_MAX, RG_BASE_PATH_ROMS "/dos/.system/PLAY.bat");
 
             char content[512];
-            int len = snprintf(content, sizeof(content),
-                            "cd ..\n%.*s.bat\n", name_len, filename);
+            int len = snprintf(content, sizeof(content), "cd ..\n%.*s.bat\n", name_len, filename);
 
             if (rg_storage_write_file(play_path, content, len, 0)) {
-                RG_LOGI("Auto-generated PLAY.bat: %s", content);
+                RG_LOGD("Auto-generated PLAY.bat: %s", content);
             } else {
-                RG_LOGW("Failed to write PLAY.bat to %s", play_path);
+                RG_LOGD("Failed to write PLAY.bat to %s", play_path);
             }
-        } else {
-            RG_LOGW("Filename is not valid: %s", out);
         }
     }
 

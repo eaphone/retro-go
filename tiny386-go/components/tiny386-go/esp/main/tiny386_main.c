@@ -205,20 +205,20 @@ static int pc_main(const char *file, const char *rom_path)
 		return err;
 	}
 	const char *ext = strrchr(rom_path, '.');
-	if (ext && strcmp(ext, ".img") == 0) {
-		fprintf(stdout, "change disks1 %s => %s\n", conf.disks[0], rom_path);
-		conf.disks[0] = rom_path;
+	if (ext && strcasecmp(ext, ".img") == 0) {
+		const char *lastname = strrchr(rom_path, '/')+1;
 
-		int base_len = (int)(ext - rom_path);  // 不加 -1
-		char out[256];
-		snprintf(out, sizeof(out), "%.*s.bat", base_len, rom_path);
-
-		FILE *file = fopen(out, "r");
-		if (!file) {
-			fprintf(stdout, "disable fdd %s\n", conf.fdd[0]);
-			conf.fdd[0] = NULL;
-		} else {
-			fclose(file);  // 及时关闭
+		if (lastname){
+			if(strncmp(lastname,"hda",3)==0){
+				conf.fdd[0] = NULL;
+				conf.disks[0] = rom_path;
+			}else if(strncmp(lastname,"hdb",3)==0){
+				conf.disks[1] = rom_path;
+			}else if(strncmp(lastname,"fda",3)==0){
+				conf.fdd[0] = rom_path;
+			}else{
+				conf.disks[0] = rom_path;
+			}
 		}
 	}
 

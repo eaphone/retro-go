@@ -580,6 +580,10 @@ void pc_step(PC *pc)
 		load_bios_and_reset(pc);
 	}
 
+#ifdef RETRO_GO
+	int64_t _t0 = get_uticks();
+#endif
+
 	i8254_update_irq(pc->pit);
 	cmos_update_irq(pc->cmos);
 	if (pc->enable_serial)
@@ -590,7 +594,32 @@ void pc_step(PC *pc)
 	#endif
 	i8257_dma_run(pc->isa_dma);
 	i8257_dma_run(pc->isa_hdma);
+
+#ifdef RETRO_GO
+	int64_t _t1 = get_uticks();
+#endif
+
 	cpu_step(pc->cpu, PC_STEP_COUNT);
+
+#ifdef RETRO_GO
+	{
+		int64_t _t2 = get_uticks();
+		static int64_t t_periph = 0, t_cpu = 0;
+		static int cnt = 0;
+		t_periph += _t1 - _t0;
+		t_cpu += _t2 - _t1;
+		cnt++;
+		if (cnt >= 2048) {
+			fprintf(stderr, "PC_STEP: periph=%lu cpu=%lu us (avg %d calls, %d instr/call)\n",
+				(unsigned long)(t_periph / cnt),
+				(unsigned long)(t_cpu / cnt),
+				cnt, PC_STEP_COUNT);
+			t_periph = 0;
+			t_cpu = 0;
+			cnt = 0;
+		}
+	}
+#endif
 }
 
 static int read_irq(void *o)
@@ -850,8 +879,26 @@ void mixer_callback (void *opaque, uint8_t *stream, int free)
 	PC *pc = opaque;
 	assert(free / 2 <= MIXER_BUF_LEN);
 	memset(tmpbuf, 0, MIXER_BUF_LEN);
+
+#ifdef RETRO_GO
+	/* Split: adlib vs sb16 vs pcspk */
+	{
+		static int64_t t_adlib = 0, t_sb16 = 0, t_mix = 0, t_pcspk = 0;
+		static int mc = 0;
+		int64_t _m0 = get_uticks();
+#endif
+
 	adlib_callback(pc->adlib, tmpbuf, free / 2); // s16, mono
+
+#ifdef RETRO_GO
+		int64_t _m1 = get_uticks();
+#endif
+
 	sb16_audio_callback(pc->sb16, stream, free); // s16, stereo
+
+#ifdef RETRO_GO
+		int64_t _m2 = get_uticks();
+#endif
 
 	int16_t *d2 = (int16_t *) stream;
 	int16_t *d1 = (int16_t *) tmpbuf;
@@ -864,7 +911,13 @@ void mixer_callback (void *opaque, uint8_t *stream, int free)
 
 	if (pcspk_get_active_out(pc->pcspk)) {
 		memset(tmpbuf, 0x80, MIXER_BUF_LEN / 2);
+#ifdef RETRO_GO
+		int64_t _m3 = get_uticks();
+#endif
 		pcspk_callback(pc->pcspk, tmpbuf, free / 4); // u8, mono
+#ifdef RETRO_GO
+		int64_t _m4 = get_uticks();
+#endif
 		for (int i = 0; i < free / 2; i++) {
 			int res = d2[i];
 			res += ((int) tmpbuf[i / 2] - 0x80) << 5;
@@ -872,7 +925,31 @@ void mixer_callback (void *opaque, uint8_t *stream, int free)
 			if (res < -32768) res = -32768;
 			d2[i] = res;
 		}
+#ifdef RETRO_GO
+		t_pcspk += (_m4 - _m3);
+#endif
 	}
+
+#ifdef RETRO_GO
+	{
+		int64_t _mx = get_uticks();
+		t_adlib += (_m1 - _m0);
+		t_sb16  += (_m2 - _m1);
+		t_mix   += (_mx - _m2);	/* mixing loops + misc */
+	}
+	mc++;
+	if (mc >= 256) {
+		fprintf(stderr, "MIXER: adlib=%lu sb16=%lu mix=%lu spk=%lu us (avg %d)\n",
+			(unsigned long)(t_adlib / mc),
+			(unsigned long)(t_sb16 / mc),
+			(unsigned long)(t_mix / mc),
+			(unsigned long)(t_pcspk / mc),
+			mc);
+		t_adlib = 0; t_sb16 = 0; t_mix = 0; t_pcspk = 0;
+		mc = 0;
+	}
+	} /* close profiling block @ line ~886 */
+#endif
 }
 
 void load_bios_and_reset(PC *pc)

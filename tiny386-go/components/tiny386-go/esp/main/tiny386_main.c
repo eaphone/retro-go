@@ -14,6 +14,7 @@
  */
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <inttypes.h>
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
@@ -39,7 +40,7 @@ static const char *TAG = "tiny386";
 #include "soc/soc.h"
 #include "soc/rtc.h"
 #include "esp_rom_sys.h"
-
+extern bool sound_enabled;
 extern uint64_t esp_rtc_get_time_us(void);
 
 uint32_t get_uticks()
@@ -277,19 +278,44 @@ static int pc_main(const char *file, const char *rom_path)
 	scroll_y_max = VIRT_HEIGHT - LCD_HEIGHT;
 
 	pc->boot_start_time = get_uticks();
+	int64_t t_pc = 0, t_audio = 0, t_input = 0, t_total = 0;
+	int profile_count = 0;
 	for (; pc->shutdown_state != 8;) {
 		while (emu_paused) {
 			vTaskDelay(pdMS_TO_TICKS(50));
 		}
-        
+
+		int64_t t0 = get_uticks();
+		
 		/* Process retro-go gamepad input */
 		input_process();
+		int64_t t1 = get_uticks();
 
 		/* Generate and submit audio samples */
-		audio_submit_frame();
+		if (sound_enabled)
+			audio_submit_frame();
+		int64_t t2 = get_uticks();
 
 		/* Step the emulator */
 		pc_step(pc);
+		int64_t t3 = get_uticks();
+
+		/* Profile every 256 iterations (~2 seconds) */
+		t_input += t1 - t0;
+		t_audio += t2 - t1;
+		t_pc   += t3 - t2;
+		t_total += t3 - t0;
+		profile_count++;
+		if (profile_count >= 256) {
+			fprintf(stderr, "PROFILE: total=%lu input=%lu audio=%lu pc=%lu us (avg %d loops)\n",
+				(unsigned long)(t_total / profile_count),
+				(unsigned long)(t_input / profile_count),
+				(unsigned long)(t_audio / profile_count),
+				(unsigned long)(t_pc / profile_count),
+				profile_count);
+			t_pc = t_audio = t_input = t_total = 0;
+			profile_count = 0;
+		}
 	}
 	return 0;
 }

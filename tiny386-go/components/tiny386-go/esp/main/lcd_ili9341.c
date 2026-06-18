@@ -11,6 +11,7 @@
 #include "menu.h"
 #include "image_lionstdio.h"
 #include <rg_display.h>  /* For rg_surface_t, rg_display_submit() */
+#include "esp_timer.h"   /* for esp_timer_get_time() profiling */
 
 extern int vk_active;
 extern int vk_need_refresh;
@@ -460,12 +461,33 @@ void vga_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(16));
             continue;
         }else{
+#ifdef RETRO_GO
+            int64_t _vt0 = esp_timer_get_time();
+#endif
             pc_vga_step(globals.pc);
 #ifdef RETRO_GO
+            int64_t _vt1 = esp_timer_get_time();
             /* Flush VGA dirty-rect updates after each refresh cycle.
              * redraw() only marks dirty; actual submit happens here. */
             extern void rg_display_flush(void);
             rg_display_flush();
+            int64_t _vt2 = esp_timer_get_time();
+            {
+                static int64_t t_vga = 0, t_flush = 0;
+                static int vcnt = 0;
+                t_vga += _vt1 - _vt0;
+                t_flush += _vt2 - _vt1;
+                vcnt++;
+                if (vcnt >= 256) {
+                    fprintf(stderr, "VGA: step=%lu flush=%lu us (avg %d calls)\n",
+                        (unsigned long)(t_vga / vcnt),
+                        (unsigned long)(t_flush / vcnt),
+                        vcnt);
+                    t_vga = 0;
+                    t_flush = 0;
+                    vcnt = 0;
+                }
+            }
 #endif
             if (menu_active || vk_active) {
                 menu_tick();

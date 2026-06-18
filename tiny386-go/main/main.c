@@ -22,6 +22,8 @@ static rg_app_t *app;
  *             1 = keyboard emulation (arrows as arrow keys)
  * Selected+Start toggles virtual keyboard */
 static int InputMode = 1;
+bool sound_enabled = true;
+static const char *SETTING_SOUND_EMULATION = "apu";
 
 /* Forward declaration of the tiny386 entry point */
 extern void tiny386_start(const char *config_path, const char *rom_path);
@@ -87,9 +89,22 @@ static rg_gui_event_t input_select_cb(rg_gui_option_t *option, rg_gui_event_t ev
 /* ============================================================
  * Options handler
  * ============================================================ */
+static rg_gui_event_t apu_toggle_cb(rg_gui_option_t *option, rg_gui_event_t event)
+{
+    if (event == RG_DIALOG_PREV || event == RG_DIALOG_NEXT)
+    {
+        sound_enabled = !sound_enabled;
+        rg_settings_set_number(NS_APP, SETTING_SOUND_EMULATION, sound_enabled);
+    }
+
+    strcpy(option->value, sound_enabled ? _("On") : _("Off"));
+    return RG_DIALOG_VOID;
+}
+
 static void options_handler(rg_gui_option_t *dest)
 {
     *dest++ = (rg_gui_option_t){0, _("Input"), "-", RG_DIALOG_FLAG_NORMAL, &input_select_cb};
+    *dest++ = (rg_gui_option_t){0, _("Sound"), "-", RG_DIALOG_FLAG_NORMAL, &apu_toggle_cb};
     *dest++ = (rg_gui_option_t)RG_DIALOG_END;
 }
 
@@ -98,8 +113,7 @@ static void options_handler(rg_gui_option_t *dest)
  * ============================================================ */
 static void about_handler(rg_gui_option_t *dest)
 {
-    *dest++ = (rg_gui_option_t){0, "tiny386 PC Emulator", NULL, RG_DIALOG_FLAG_MESSAGE, NULL};
-    *dest++ = (rg_gui_option_t){0, "8086/80186/386 Emulator", NULL, RG_DIALOG_FLAG_MESSAGE, NULL};
+    *dest++ = (rg_gui_option_t){0, "tiny386 PC Emulator By: superzazu", NULL, RG_DIALOG_FLAG_MESSAGE, NULL};
     *dest++ = (rg_gui_option_t){0, "By: superzazu", NULL, RG_DIALOG_FLAG_MESSAGE, NULL};
     *dest++ = (rg_gui_option_t){0, "Retro-Go port: eaphone", NULL, RG_DIALOG_FLAG_MESSAGE, NULL};
     *dest++ = (rg_gui_option_t)RG_DIALOG_END;
@@ -123,6 +137,7 @@ void app_main(void)
             .screenshot = &screenshot_handler,
             .event = &event_handler,
             .about = &about_handler,
+            .options = &options_handler,
         },
     });
     app->configNs = "tiny386";

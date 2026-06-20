@@ -49,6 +49,7 @@
 #include <string.h>
 //#include "dosbox.h"
 #include "dbopl.h"
+#include <esp_attr.h>
 
 #ifdef _MSC_VER
 #define inline __inline
@@ -191,7 +192,7 @@ static Bit16u SinTable[ 512 ];
 
 //6 is just 0 shifted and masked
 
-static Bit16s WaveTable[ 8 * 512 ];
+static EXT_RAM_BSS_ATTR Bit16s WaveTable[ 8 * 512 ];
 //Distance into WaveTable the wave starts
 static const Bit16u WaveBaseTable[8] = {
   0x000, 0x200, 0x200, 0x800,

@@ -221,6 +221,7 @@ static int pc_main(const char *file, const char *rom_path)
 		return err;
 	}
 	const char *ext = strrchr(rom_path, '.');
+	ESP_LOGI(TAG, "rom path: %s\n", rom_path);
 	if (ext && strcasecmp(ext, ".img") == 0) {
 		const char *lastname = strrchr(rom_path, '/')+1;
 
@@ -229,9 +230,6 @@ static int pc_main(const char *file, const char *rom_path)
 				conf.fdd[0] = NULL;
 				conf.disks[0] = strdup(rom_path);
 				conf.iscd[0] = 0;
-			}else if(strncmp(lastname,"hdb",3)==0){
-				conf.disks[1] = strdup(rom_path);
-				conf.iscd[1] = 0;
 			}else if(strncmp(lastname,"fda",3)==0){
 				conf.fdd[0] = strdup(rom_path);
 			}else{

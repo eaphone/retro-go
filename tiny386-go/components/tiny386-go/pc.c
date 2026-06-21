@@ -601,7 +601,7 @@ void pc_step(PC *pc)
 
 	cpu_step(pc->cpu, PC_STEP_COUNT);
 
-#ifdef RETRO_GO
+#if defined(RETRO_GO) && defined(ESPPROFILE)
 	{
 		int64_t _t2 = get_uticks();
 		static int64_t t_periph = 0, t_cpu = 0;
@@ -931,6 +931,7 @@ void mixer_callback (void *opaque, uint8_t *stream, int free)
 	}
 
 #ifdef RETRO_GO
+#ifdef ESPPROFILE
 	{
 		int64_t _mx = get_uticks();
 		t_adlib += (_m1 - _m0);
@@ -948,6 +949,7 @@ void mixer_callback (void *opaque, uint8_t *stream, int free)
 		t_adlib = 0; t_sb16 = 0; t_mix = 0; t_pcspk = 0;
 		mc = 0;
 	}
+#endif
 	} /* close profiling block @ line ~886 */
 #endif
 }

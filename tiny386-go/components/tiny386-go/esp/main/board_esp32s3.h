@@ -5,8 +5,8 @@
  * are disabled by TINY386_NO_IRAM.  Can selectively enable smaller
  * functions if profiling shows they're worth the IRAM cost. */
 #define IRAM_ATTR_CPU_EXEC1 /* disabled - see comment above */
-
 #define ESPDEBUG
+//#define ESPPROFILE
 #define BPP 16
 // FULL_UPDATE removed: enables dirty-rect tracking for text mode.
 // Only changed characters are redrawn, drastically reducing VGA render cost.

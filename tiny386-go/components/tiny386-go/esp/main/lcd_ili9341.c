@@ -465,12 +465,13 @@ void vga_task(void *arg)
             int64_t _vt0 = esp_timer_get_time();
 #endif
             pc_vga_step(globals.pc);
-#ifdef RETRO_GO
+#if defined(ETRO_GO)
             int64_t _vt1 = esp_timer_get_time();
             /* Flush VGA dirty-rect updates after each refresh cycle.
              * redraw() only marks dirty; actual submit happens here. */
             extern void rg_display_flush(void);
             rg_display_flush();
+            #if defined(ESPPROFILE)
             int64_t _vt2 = esp_timer_get_time();
             {
                 static int64_t t_vga = 0, t_flush = 0;
@@ -488,6 +489,7 @@ void vga_task(void *arg)
                     vcnt = 0;
                 }
             }
+            #endif
 #endif
             if (menu_active || vk_active) {
                 menu_tick();

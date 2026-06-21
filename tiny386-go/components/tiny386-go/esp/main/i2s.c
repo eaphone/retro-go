@@ -90,6 +90,7 @@ void audio_submit_frame(void)
         rg_audio_submit((void *)audio_buf, MIXER_BUF_LEN);
         int64_t _a4 = rg_system_timer();
 
+        #ifdef ESPPROFILE
         /* Profile: mix vs vol vs submit */
         {
             static int64_t t_mix = 0, t_vol = 0, t_sub = 0;
@@ -108,6 +109,7 @@ void audio_submit_frame(void)
                 asub = 0; acnt = 0;
             }
         }
+        #endif
     }
 
     /* If we fell too far behind (emulator stall), reset the clock

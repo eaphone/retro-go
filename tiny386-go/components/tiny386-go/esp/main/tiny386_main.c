@@ -299,7 +299,7 @@ static int pc_main(const char *file, const char *rom_path)
 		/* Step the emulator */
 		pc_step(pc);
 		int64_t t3 = get_uticks();
-
+#ifdef ESPPROFILE
 		/* Profile every 256 iterations (~2 seconds) */
 		t_input += t1 - t0;
 		t_audio += t2 - t1;
@@ -316,6 +316,7 @@ static int pc_main(const char *file, const char *rom_path)
 			t_pc = t_audio = t_input = t_total = 0;
 			profile_count = 0;
 		}
+#endif
 	}
 	return 0;
 }

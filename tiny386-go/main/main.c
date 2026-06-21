@@ -114,7 +114,6 @@ static void options_handler(rg_gui_option_t *dest)
 static void about_handler(rg_gui_option_t *dest)
 {
     *dest++ = (rg_gui_option_t){0, "tiny386 PC Emulator By: superzazu", NULL, RG_DIALOG_FLAG_MESSAGE, NULL};
-    *dest++ = (rg_gui_option_t){0, "By: superzazu", NULL, RG_DIALOG_FLAG_MESSAGE, NULL};
     *dest++ = (rg_gui_option_t){0, "Retro-Go port: eaphone", NULL, RG_DIALOG_FLAG_MESSAGE, NULL};
     *dest++ = (rg_gui_option_t)RG_DIALOG_END;
 }

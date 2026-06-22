@@ -19,6 +19,7 @@ __license__ = "GPLv3"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <ctype.h>
 
@@ -65,12 +66,12 @@ unsigned char *M68K_RAM=(void *)(uint32_t)(0); // 68K RAM
 #else
 
 unsigned char *ROM_DATA; // 68K Main Program (uncompressed)
-unsigned char M68K_RAM[MAX_RAM_SIZE];    // 68K RAM
+unsigned char *M68K_RAM; // 68K RAM (heap allocated to save sram_low)
 #endif
 
 
 // Setup Z80 Memory
-unsigned char ZRAM[MAX_Z80_RAM_SIZE]; // Z80 RAM
+unsigned char *ZRAM; // Z80 RAM (heap allocated to save sram_low)
 unsigned char TMSS[0x4];
 extern unsigned short gwenesis_vdp_status;
 
@@ -105,6 +106,10 @@ void load_cartridge()
 
 void load_cartridge(unsigned char *buffer, size_t size)
 {
+    // Allocate from heap on first call (saves ~72KB of sram_low on ESP32-P4)
+    if (!M68K_RAM) M68K_RAM = malloc(MAX_RAM_SIZE);
+    if (!ZRAM) ZRAM = malloc(MAX_Z80_RAM_SIZE);
+
     // Clear all volatile memory
     memset(M68K_RAM, 0, MAX_RAM_SIZE);
     memset(ZRAM, 0, MAX_Z80_RAM_SIZE);

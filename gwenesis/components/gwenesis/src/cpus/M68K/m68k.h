@@ -158,7 +158,7 @@
 #else
 
 	extern unsigned char *ROM_DATA;
-	extern unsigned char M68K_RAM[];
+	extern unsigned char *M68K_RAM;
 #endif
 
 #define FETCH8ROM(A) ((ROM_DATA[((A) ^ 1)]))

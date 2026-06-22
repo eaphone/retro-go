@@ -4,7 +4,6 @@
  * Hot helpers (try_jcc8, store8/16/32) already have IRAM_ATTR but
  * are disabled by TINY386_NO_IRAM.  Can selectively enable smaller
  * functions if profiling shows they're worth the IRAM cost. */
-#define IRAM_ATTR_CPU_EXEC1 /* disabled - see comment above */
 #define ESPDEBUG
 //#define ESPPROFILE
 #define BPP 16
@@ -18,7 +17,7 @@
 #define LCD_HEIGHT 240
 
 // PSRAM bump-allocator pool (guest RAM 6 MB + overhead, surface is separate)
-#define PSRAM_ALLOC_LEN (int)(6.5 * 1024 * 1024)
+#define PSRAM_ALLOC_LEN (int)(10 * 1024 * 1024)
 
 // Override VGA retrace interval: 60fps = ~16667us (was 5000us = 200fps).
 // The LCD panel refreshes at 60Hz, so rendering faster is wasted work.

@@ -30,8 +30,12 @@
 #include "../../pc.h"
 #include "common.h"
 #include "menu.h"
+#ifdef RETRO_GO
 #include <rg_input.h>
 #include <rg_system.h>  /* For RG_PATH_MAX, RG_BASE_PATH_SAVES */
+#else
+#include "driver/gpio.h"
+#endif
 
 static const char *TAG = "input";
 
@@ -83,6 +87,41 @@ static inline void send_key(int is_down, int keycode)
         ps2_put_keycode((PS2KbdState *)globals.kbd, is_down, keycode);
     }
 }
+#ifndef RETRO_GO
+#define RG_KEY_UP       GPIO_NUM_11
+#define RG_KEY_DOWN     GPIO_NUM_12
+#define RG_KEY_LEFT     GPIO_NUM_13
+#define RG_KEY_RIGHT    GPIO_NUM_14
+#define RG_KEY_START    GPIO_NUM_21
+#define RG_KEY_SELECT   GPIO_NUM_47
+#define RG_KEY_X        GPIO_NUM_41
+#define RG_KEY_Y        GPIO_NUM_42
+#define RG_KEY_A        GPIO_NUM_0
+#define RG_KEY_B        GPIO_NUM_48
+typedef struct {
+    gpio_num_t gpio;
+    uint8_t    keycode;        /* PS/2 scancode sent to the emulator */
+    uint8_t    prev_state;     /* 1 = pressed, 0 = released */
+    uint8_t    sent_release;   /* 1 = release already sent for this press */
+    uint32_t   press_time;     /* tick when button was pressed (for repeat delay) */
+    uint32_t   last_repeat;    /* tick when last repeat key was sent */
+    uint8_t    is_scroll;      /* 1 = this button is a direction (for scroll combo) */
+    uint8_t    repeatable;     /* 1 = held key triggers repeats */
+} button_t;
+
+static button_t buttons[10] = {
+    { .gpio = RG_KEY_UP,     .keycode = KEYCODE_UP,     .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
+    { .gpio = RG_KEY_DOWN,   .keycode = KEYCODE_DOWN,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
+    { .gpio = RG_KEY_LEFT,   .keycode = KEYCODE_LEFT,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
+    { .gpio = RG_KEY_RIGHT,  .keycode = KEYCODE_RIGHT,  .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
+    { .gpio = RG_KEY_A,      .keycode = KEYCODE_SPACE,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 1 }, /* A → Space (Select+A → Enter) */
+    { .gpio = RG_KEY_B,      .keycode = KEYCODE_ESC,      .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* B → ESC (Select+B → Backspace) */
+    { .gpio = RG_KEY_START,  .keycode = 0,               .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* screenshot */
+    { .gpio = RG_KEY_SELECT, .keycode = 0,               .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* combo only */
+    { .gpio = RG_KEY_X,      .keycode = KEYCODE_N,       .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* X → N */
+    { .gpio = RG_KEY_Y,      .keycode = KEYCODE_Y,       .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* Y → Y */
+};
+#endif
 
 /* Main input processing function.
  * Called periodically from the emulator's main loop.
@@ -90,10 +129,10 @@ static inline void send_key(int is_down, int keycode)
  * and maps to PS/2 scancodes sent to the emulated keyboard. */
 void input_process(void)
 {
+    uint32_t joystick = 0;
+#ifdef RETRO_GO
     int64_t now = rg_system_timer();
-
-    /* Read current retro-go gamepad state */
-    uint32_t joystick = rg_input_read_gamepad();
+    joystick = rg_input_read_gamepad();
 
     /* Check for Menu/Option buttons to open retro-go's own menus */
     if (joystick == RG_KEY_MENU)
@@ -112,6 +151,16 @@ void input_process(void)
         prev_joystick = joystick;
         return;
     }
+#else
+    TickType_t now = xTaskGetTickCount();
+    for (int i = 0; i < 10; i++) {
+        button_t *btn = &buttons[i];
+        int level = gpio_get_level(btn->gpio);
+        if (level) {
+            joystick |= btn->keycode;
+        }
+    }
+#endif
 
     /* Detect pressed/released edges */
     uint32_t pressed = joystick & ~prev_joystick;
@@ -391,8 +440,12 @@ void screenshot_save(void)
     }
 
     /* Use retro-go storage for saving screenshot */
+#ifdef RETRO_GO
     char path[RG_PATH_MAX + 1];
     snprintf(path, RG_PATH_MAX, "%s/screenshot.bmp", RG_BASE_PATH_SAVES);
+#else
+    const char *path = "/sdcard/screenshot.bmp";
+#endif
     FILE *fp = fopen(path, "wb");
     if (!fp) {
         ESP_LOGE(TAG, "Screenshot failed: cannot open file");

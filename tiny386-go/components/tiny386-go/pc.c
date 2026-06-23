@@ -195,20 +195,23 @@ static u8 pc_io_read(void *o, int addr)
 	case 0x304: case 0x305: case 0x306: case 0x307:
 	case 0x308: case 0x309: case 0x30a: case 0x30b:
 	case 0x30c: case 0x30d: case 0x30e: case 0x30f:
-    #ifdef RG_TARGET_ESP32_P4_DEVKIT
+    #ifdef esp32s3
 		val = ne2000_ioport_read(pc->ne2000, addr);
-	#endif
 		return val;
+	#endif
+		return 0xff;
 	case 0x310:
-    #ifdef RG_TARGET_ESP32_P4_DEVKIT
+    #ifdef esp32s3
 		val = ne2000_asic_ioport_read(pc->ne2000, addr);
-	#endif
 		return val;
+	#endif
+		return 0xff;
 	case 0x31f:
-    #ifdef RG_TARGET_ESP32_P4_DEVKIT
+    #ifdef esp32s3
 		val = ne2000_reset_ioport_read(pc->ne2000, addr);
-	#endif
 		return val;
+	#endif
+		return 0xff;
 	case 0x00: case 0x01: case 0x02: case 0x03:
 	case 0x04: case 0x05: case 0x06: case 0x07:
 		val = i8257_read_chan(pc->isa_dma, addr - 0x00, 1);
@@ -275,10 +278,11 @@ static u16 pc_io_read16(void *o, int addr)
 		val = i440fx_read_data(pc->i440fx, addr - 0xcfc, 1);
 		return val;
 	case 0x310:
-    #ifdef RG_TARGET_ESP32_P4_DEVKIT
+    #ifdef esp32s3
 		val = ne2000_asic_ioport_read(pc->ne2000, addr);
-	#endif
 		return val;
+	#endif
+		return 0xff;
 	case 0x220:
 		return adlib_read(pc->adlib, addr);
 	default:

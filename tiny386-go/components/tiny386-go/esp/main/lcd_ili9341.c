@@ -10,7 +10,9 @@
 #include "common.h"
 #include "menu.h"
 #include "image_lionstdio.h"
+#ifdef RETRO_GO
 #include <rg_display.h>  /* For rg_surface_t, rg_display_submit() */
+#endif
 #include "esp_timer.h"   /* for esp_timer_get_time() profiling */
 
 extern int vk_active;
@@ -434,7 +436,7 @@ static void lcd_clear_screen(void)
     ESP_LOGI(TAG, "Screen cleared");
 }
 
-/* ---- VGA 主任务 (Retro-Go mode) ---- */
+/* ---- VGA 主任务 ---- */
 void vga_task(void *arg)
 {
     int core_id = esp_cpu_get_core_id();
@@ -442,6 +444,38 @@ void vga_task(void *arg)
     
     extern struct Globals globals;
     extern EventGroupHandle_t global_event_group;
+#ifndef RETRO_GO
+    // 初始化 GPIO
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << PIN_NUM_SPI_DC) | (1ULL << PIN_NUM_SPI_RST),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+    
+    // 初始化背光
+    backlight_init();
+    
+    // 初始化 SPI
+    spi_init();
+    
+    // 初始化 LCD
+    lcd_init_hardware();
+    
+    // 显示测试图案（先填充屏幕再开背光，避免显示雪花）
+    lcd_test_pattern();
+    
+    // 设置背光亮度
+    backlight_set(30);
+    
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    
+    // 清屏为黑色
+    ESP_LOGI(TAG, "Clearing screen to black");
+    lcd_clear_screen();
+#endif
     
     // 通知 PC 任务面板已就绪
     globals.panel = (void*)1;  // 非 NULL 表示面板已就绪
@@ -451,9 +485,11 @@ void vga_task(void *arg)
     xEventGroupWaitBits(global_event_group, BIT0, pdFALSE, pdFALSE, portMAX_DELAY);
     
         ESP_LOGI(TAG, "Starting VGA loop");
-    
+#ifndef RETRO_GO
     extern uint8_t *g_framebuffer;
+#else
     extern rg_surface_t *rg_surf;  /* RG surface from tiny386_main.c */
+#endif
     uint32_t frame = 0;
     
     while (1) {
@@ -461,50 +497,19 @@ void vga_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(16));
             continue;
         }else{
-#ifdef RETRO_GO
-            int64_t _vt0 = esp_timer_get_time();
-#endif
-            pc_vga_step(globals.pc);
-#if defined(ETRO_GO)
-            int64_t _vt1 = esp_timer_get_time();
-            /* Flush VGA dirty-rect updates after each refresh cycle.
-             * redraw() only marks dirty; actual submit happens here. */
+    #ifdef RETRO_GO
             extern void rg_display_flush(void);
             rg_display_flush();
-            #if defined(ESPPROFILE)
-            int64_t _vt2 = esp_timer_get_time();
-            {
-                static int64_t t_vga = 0, t_flush = 0;
-                static int vcnt = 0;
-                t_vga += _vt1 - _vt0;
-                t_flush += _vt2 - _vt1;
-                vcnt++;
-                if (vcnt >= 256) {
-                    fprintf(stderr, "VGA: step=%lu flush=%lu us (avg %d calls)\n",
-                        (unsigned long)(t_vga / vcnt),
-                        (unsigned long)(t_flush / vcnt),
-                        vcnt);
-                    t_vga = 0;
-                    t_flush = 0;
-                    vcnt = 0;
-                }
+    #else
+            if (g_framebuffer) {
+                lcd_draw(0, 0, LCD_WIDTH, LCD_HEIGHT, g_framebuffer);
             }
-            #endif
-#endif
+    #endif
+            pc_vga_step(globals.pc);
+            
             if (menu_active || vk_active) {
                 menu_tick();
             }
-        }
-        
-        frame++;
-        /* Periodic full submit for menu/overlay updates that bypass redraw().
-         * ~10Hz is enough for UI; lower than old 20Hz to save bandwidth. */
-        if (frame % 10 == 0 && rg_surf) {
-            rg_surf->offset = 0;
-            rg_display_submit(rg_surf, 0);
-        }
-        if (frame % 100 == 0) {
-            ESP_LOGD(TAG, "Frame %lu", frame);
         }
         
         vTaskDelay(pdMS_TO_TICKS(16));  /* ~60 fps */

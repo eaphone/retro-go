@@ -1,27 +1,19 @@
 #define BUILD_ESP32
 
-/* Note: sram_low is too small for full cpu_exec1 (~50KB overflow).
- * Hot helpers (try_jcc8, store8/16/32) already have IRAM_ATTR but
- * are disabled by TINY386_NO_IRAM.  Can selectively enable smaller
- * functions if profiling shows they're worth the IRAM cost. */
+#define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
+
 #define ESPDEBUG
-//#define ESPPROFILE
 #define BPP 16
-// FULL_UPDATE removed: enables dirty-rect tracking for text mode.
-// Only changed characters are redrawn, drastically reducing VGA render cost.
-// No SWAPXY — landscape matches VGA output directly
+#define FULL_UPDATE
+// No SWAPXY — 800x480 landscape matches VGA output directly
 #define SCALE_2_1
 // SWAP_BYTEORDER_BPP16    // LCD uses little-endian RGB565 (set via RAMCTRL)
 #define USE_LCD_ILI9341
 #define LCD_WIDTH  320
 #define LCD_HEIGHT 240
 
-// PSRAM bump-allocator pool (guest RAM 6 MB + overhead, surface is separate)
-#define PSRAM_ALLOC_LEN (int)(10 * 1024 * 1024)
-
-// Override VGA retrace interval: 60fps = ~16667us (was 5000us = 200fps).
-// The LCD panel refreshes at 60Hz, so rendering faster is wasted work.
-#define RETRACE_INTERVAL_US 16667
+// PSRAM bump-allocator pool (guest RAM 6 MB + overhead)
+#define PSRAM_ALLOC_LEN (int)(6.5 * 1024 * 1024)
 
 // SD card: SPI mode via SPI3_HOST
 #define SD_SPI_HOST SPI3_HOST
@@ -32,9 +24,14 @@
 #define SD_SPI_FREQ_KHZ 20000
 
 // I2C for backlight (CH422G I/O expander)
+#define LCD_I2C_SDA  GPIO_NUM_15
+#define LCD_I2C_SCL  GPIO_NUM_16
 
 // I2S audio output for HT517 amplifier
 // HT517 is an I2S DAC amplifier, no external codec config needed
 // BCK=GPIO8, WS=GPIO3, DATA=GPIO18, MCLK unused
-// Kept at 256: 512 caused bursty audio submission starving pc_step.
+#define I2S_MCLK I2S_GPIO_UNUSED
+#define I2S_BCLK GPIO_NUM_8
+#define I2S_WS   GPIO_NUM_3
+#define I2S_DOUT GPIO_NUM_18
 #define MIXER_BUF_LEN 256

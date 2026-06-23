@@ -12,7 +12,7 @@
  *  - Uses retro-go's input system (rg_input_read_gamepad) instead of direct GPIO polling
  *  - Reads config from the path passed in by retro-go
  */
-
+#ifdef RETRO_GO
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -458,3 +458,4 @@ void tiny386_start(const char *config_path, const char *rom_path)
 		fprintf(stderr, "FATAL: No PSRAM available\n");
 	}
 }
+#endif

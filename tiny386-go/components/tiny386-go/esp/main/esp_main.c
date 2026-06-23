@@ -496,6 +496,7 @@ void app_main(void)
 				const static char *files[] = {
 					"/sdcard/tiny386.ini",
 					"/sdcard/roms/dos/.system/tiny386.ini",
+					"/spiflash/tiny386.ini",
 					NULL,
 				};
 	static struct esp_ini_config config;
@@ -508,7 +509,39 @@ void app_main(void)
 			break;
 		}
 	}
-		if (!ini_found) {
+	if (!ini_found) {
+		/* Try to create a default config on SPIFFS */
+		fprintf(stderr, "No config found, creating default on SPIFFS...\n");
+		FILE *f = fopen("/spiflash/tiny386.ini", "w");
+		if (f) {
+			fprintf(f,
+				"[pc]\n"
+				"bios = bios.bin\n"
+				"vga_bios = vgabios.bin\n"
+				"mem_size = 8M\n"
+				"vga_mem_size = 256K\n"
+				"\n"
+				"[display]\n"
+				"width = %d\n"
+				"height = %d\n"
+				"\n"
+				"[cpu]\n"
+				"gen = 4\n"
+				"fpu = 0\n",
+				LCD_WIDTH, LCD_HEIGHT);
+			fclose(f);
+			fprintf(stderr, "Default config written to /spiflash/tiny386.ini\n");
+			/* Try again with the newly created config */
+			if (ini_parse("/spiflash/tiny386.ini", parse_ini, &config) == 0) {
+				config.filename = "/spiflash/tiny386.ini";
+				ini_found = true;
+				fprintf(stderr, "Using config: /spiflash/tiny386.ini\n");
+			}
+		} else {
+			fprintf(stderr, "Failed to create default config on SPIFFS\n");
+		}
+	}
+	if (!ini_found) {
 		fprintf(stderr, "FATAL: No config file found (tried SD card, SPIFFS)\n");
 		return;  /* Don't start emulator tasks */
 	}

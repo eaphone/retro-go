@@ -8,7 +8,7 @@ if(NOT DEFINED BOARD)
     if(DEFINED ENV{BOARD})
         set(BOARD $ENV{BOARD})
     else()
-        set(BOARD "jc3248w535")
+        set(BOARD "esp32p4")
     endif()
 endif()
 # Always sync sdkconfig from the board-specific file.

@@ -28,16 +28,8 @@ static const char *TAG = "lcd";
 #define LCD_HEIGHT              (240)
 #define SCALE_2_1
 
-/* ---- ILI9341 引脚定义 (根据你的硬件修改) ---- */
-#define PIN_NUM_SPI_MOSI        (GPIO_NUM_6)
-#define PIN_NUM_SPI_SCLK        (GPIO_NUM_5)
-#define PIN_NUM_SPI_CS          (GPIO_NUM_15)
-#define PIN_NUM_SPI_DC          (GPIO_NUM_7)
-#define PIN_NUM_SPI_RST         (GPIO_NUM_2)
-#define PIN_NUM_SPI_BL          (GPIO_NUM_4)
 
 /* ---- SPI 配置 ---- */
-#define SPI_HOST                (SPI2_HOST)
 #define SPI_CLOCK_SPEED         (40 * 1000 * 1000)  // 40MHz
 
 /* ---- 背光 PWM ---- */
@@ -446,6 +438,7 @@ void vga_task(void *arg)
     extern EventGroupHandle_t global_event_group;
 #ifndef RETRO_GO
     // 初始化 GPIO
+    fprintf(stderr, "initializing lcd\n");
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_NUM_SPI_DC) | (1ULL << PIN_NUM_SPI_RST),
         .mode = GPIO_MODE_OUTPUT,

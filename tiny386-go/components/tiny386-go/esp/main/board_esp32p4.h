@@ -16,6 +16,14 @@
 #define USE_LCD_ILI9341
 #define LCD_WIDTH  320
 #define LCD_HEIGHT 240
+/* ---- ILI9341 引脚定义 (根据你的硬件修改) ---- */
+#define SPI_HOST                SPI2_HOST
+#define PIN_NUM_SPI_MOSI        GPIO_NUM_18
+#define PIN_NUM_SPI_SCLK        GPIO_NUM_19
+#define PIN_NUM_SPI_CS          GPIO_NUM_20
+#define PIN_NUM_SPI_DC          GPIO_NUM_21
+#define PIN_NUM_SPI_RST         GPIO_NUM_22
+#define PIN_NUM_SPI_BL          GPIO_NUM_23
 
 // PSRAM bump-allocator pool (guest RAM 6 MB + overhead, surface is separate)
 #define PSRAM_ALLOC_LEN (int)(10 * 1024 * 1024)
@@ -26,10 +34,10 @@
 
 // SD card: SPI mode via SPI3_HOST
 #define SD_SPI_HOST SPI3_HOST
-#define SD_SPI_MISO  GPIO_NUM_45
-#define SD_SPI_MOSI  GPIO_NUM_39
-#define SD_SPI_SCK   GPIO_NUM_38
-#define SD_SPI_CS    GPIO_NUM_40
+#define SD_SPI_MISO  GPIO_NUM_8
+#define SD_SPI_MOSI  GPIO_NUM_6
+#define SD_SPI_SCK   GPIO_NUM_7
+#define SD_SPI_CS    GPIO_NUM_9
 #define SD_SPI_FREQ_KHZ 20000
 
 // I2C for backlight (CH422G I/O expander)
@@ -39,3 +47,18 @@
 // BCK=GPIO8, WS=GPIO3, DATA=GPIO18, MCLK unused
 // Kept at 256: 512 caused bursty audio submission starving pc_step.
 #define MIXER_BUF_LEN 256
+#define I2S_MCLK GPIO_NUM_NC
+#define I2S_BCLK GPIO_NUM_NC
+#define I2S_WS   GPIO_NUM_2
+#define I2S_DOUT GPIO_NUM_3
+
+#define RG_KEY_UP       GPIO_NUM_35
+#define RG_KEY_DOWN     GPIO_NUM_39
+#define RG_KEY_LEFT     GPIO_NUM_40
+#define RG_KEY_RIGHT    GPIO_NUM_41
+#define RG_KEY_START    GPIO_NUM_42
+#define RG_KEY_SELECT   GPIO_NUM_43
+#define RG_KEY_X        GPIO_NUM_46
+#define RG_KEY_Y        GPIO_NUM_47
+#define RG_KEY_A        GPIO_NUM_44
+#define RG_KEY_B        GPIO_NUM_45

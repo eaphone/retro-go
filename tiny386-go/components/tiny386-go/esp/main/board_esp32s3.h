@@ -11,6 +11,14 @@
 #define USE_LCD_ILI9341
 #define LCD_WIDTH  320
 #define LCD_HEIGHT 240
+/* ---- ILI9341 引脚定义 (根据你的硬件修改) ---- */
+#define SPI_HOST                SPI2_HOST
+#define PIN_NUM_SPI_MOSI        GPIO_NUM_6
+#define PIN_NUM_SPI_SCLK        GPIO_NUM_5
+#define PIN_NUM_SPI_CS          GPIO_NUM_15
+#define PIN_NUM_SPI_DC          GPIO_NUM_7
+#define PIN_NUM_SPI_RST         GPIO_NUM_2
+#define PIN_NUM_SPI_BL          GPIO_NUM_4
 
 // PSRAM bump-allocator pool (guest RAM 6 MB + overhead)
 #define PSRAM_ALLOC_LEN (int)(6.5 * 1024 * 1024)
@@ -35,3 +43,14 @@
 #define I2S_WS   GPIO_NUM_3
 #define I2S_DOUT GPIO_NUM_18
 #define MIXER_BUF_LEN 256
+
+#define RG_KEY_UP       GPIO_NUM_11
+#define RG_KEY_DOWN     GPIO_NUM_12
+#define RG_KEY_LEFT     GPIO_NUM_13
+#define RG_KEY_RIGHT    GPIO_NUM_14
+#define RG_KEY_START    GPIO_NUM_21
+#define RG_KEY_SELECT   GPIO_NUM_47
+#define RG_KEY_X        GPIO_NUM_41
+#define RG_KEY_Y        GPIO_NUM_42
+#define RG_KEY_A        GPIO_NUM_0
+#define RG_KEY_B        GPIO_NUM_48

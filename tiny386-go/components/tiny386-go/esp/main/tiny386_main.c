@@ -446,7 +446,7 @@ void tiny386_start(const char *config_path, const char *rom_path)
 
 	if (psram) {
 		xTaskCreatePinnedToCore(i386_task, "i386_main", 16384, &config, 3, NULL, 1);
-		xTaskCreatePinnedToCore(vga_task, "vga_task", 8192, NULL, 0, NULL, 0);
+		xTaskCreatePinnedToCore(vga_task, "vga_task", 16384, NULL, 0, NULL, 0);
 		
 		/* Wait for the emulator tasks to complete.
 		 * This prevents app_main() from calling rg_system_exit()

@@ -29,6 +29,17 @@ static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
 
 /* ---- Native tiny386 storage_init (used when NOT built under retro-go) ---- */
 #ifndef RETRO_GO
+#ifdef esp32s3
+/* ---- SD 卡传输回调 ---- */
+static esp_err_t sdcard_do_transaction(int slot, sdmmc_command_t *cmdinfo)
+{
+    esp_err_t ret = sdspi_host_do_transaction(slot, cmdinfo);
+    if (ret == ESP_ERR_NO_MEM) {
+        ESP_LOGW(TAG, "SD card transaction out of memory");
+    }
+    return ret;
+}
+#endif
 
 void storage_init(void)
 {
@@ -36,8 +47,7 @@ void storage_init(void)
     sdmmc_card_t *card = NULL;
     
 #ifdef esp32s3
-
-    ESP_LOGI(TAG, "Initializing SD card on SPI%d...", TEST_SD_SPI_HOST);
+    ESP_LOGI(TAG, "Initializing SD card on SPI%d...", SD_SPI_HOST);
     
     // 1. 初始化 SPI 总线（使用 DMA，SDSPI 需要）
     spi_bus_config_t bus_cfg = {
@@ -48,7 +58,7 @@ void storage_init(void)
         .quadhd_io_num = -1,
         .max_transfer_sz = 4092,
     };
-    esp_err_t ret = spi_bus_initialize(TEST_SD_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+    esp_err_t ret = spi_bus_initialize(SD_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "SPI bus init failed: 0x%x", ret);
         goto try_spiffs;

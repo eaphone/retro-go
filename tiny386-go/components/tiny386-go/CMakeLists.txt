@@ -1,6 +1,25 @@
 # tiny386-go component - a retro-go wrapper for the tiny386 PC emulator
-set(COMPONENT_SRCDIRS "." "esp/main")
-set(COMPONENT_ADD_INCLUDEDIRS "." "esp/main" ".")
+set(COMPONENT_SRCS
+    # Core tiny386 emulator sources
+    "i386.c" "pc.c" "vga.c" "ini.c" "i8042.c"
+    "i8259.c" "i8254.c" "ide.c" "misc.c" "fpu.c"
+    "i8257.c" "pci.c" "ne2000.c" "sb16.c" "fmopl.c"
+    "adlib.c" "pcspk.c"
+    # ESP port sources
+    "esp/main/tiny386_main.c"
+    "esp/main/menu.c"
+    "esp/main/vkeyboard.c"
+    "esp/main/storage.c"
+    "esp/main/input.c"
+    "esp/main/wifi.c"
+    "esp/main/i2s.c"
+    "esp/main/sdmmc_crc_wrap.c"
+    "esp/main/lcd_ili9341.c"
+    "esp/main/lcd_axs15231b.c"
+    "esp/main/lcd_elecrow7s3.c"
+    "esp/main/lcd_st7701.c"
+)
+set(COMPONENT_ADD_INCLUDEDIRS "." "esp/main")
 set(COMPONENT_REQUIRES "retro-go vfs")
 
 register_component()

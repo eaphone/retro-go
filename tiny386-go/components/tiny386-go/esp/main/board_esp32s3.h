@@ -1,5 +1,5 @@
 #define BUILD_ESP32
-
+#define esp32s3
 #define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
 
 #define ESPDEBUG

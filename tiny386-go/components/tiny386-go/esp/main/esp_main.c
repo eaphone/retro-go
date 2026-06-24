@@ -570,7 +570,7 @@ void app_main(void)
 
 	if (psram) {
 		xTaskCreatePinnedToCore(i386_task, "i386_main", 4096, &config, 3, NULL, 1);
-		xTaskCreatePinnedToCore(vga_task, "vga_task", 4096, NULL, 0, NULL, 0);
+		xTaskCreatePinnedToCore(vga_task, "vga_task", 16384, NULL, 0, NULL, 0);
 	}
 }
 

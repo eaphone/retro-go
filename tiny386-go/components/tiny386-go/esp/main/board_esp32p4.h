@@ -48,7 +48,7 @@
 // Kept at 256: 512 caused bursty audio submission starving pc_step.
 #define MIXER_BUF_LEN 256
 #define I2S_MCLK GPIO_NUM_NC
-#define I2S_BCLK GPIO_NUM_NC
+#define I2S_BCLK GPIO_NUM_4
 #define I2S_WS   GPIO_NUM_2
 #define I2S_DOUT GPIO_NUM_3
 

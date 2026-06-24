@@ -181,33 +181,44 @@ void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src)
         dst += row_bytes;
     }
     
-    /* One single DMA SPI transaction for the entire dirty rect */
     if (spi_mutex) xSemaphoreTake(spi_mutex, portMAX_DELAY);
     
     lcd_set_window(x_start, y_start, x_end - 1, y_end - 1);
     gpio_set_level(PIN_NUM_SPI_DC, 1);
     
-    /* Chunk to SPI_MAX_CHUNK_SIZE for DMA compatibility */
+    /* Queue all chunks at once so GDMA streams them back-to-back */
+    int n_chunks = (total_bytes + SPI_MAX_CHUNK_SIZE - 1) / SPI_MAX_CHUNK_SIZE;
+    spi_transaction_t trans[64];  // max 64 chunks (can hold full screen)
+    
     uint8_t *txp = spi_staging;
     size_t remaining = total_bytes;
-    while (remaining > 0) {
+    for (int i = 0; i < n_chunks; i++) {
         size_t chunk = (remaining < SPI_MAX_CHUNK_SIZE) ? remaining : SPI_MAX_CHUNK_SIZE;
-        spi_transaction_t trans = {
+        trans[i] = (spi_transaction_t){
             .length = chunk * 8,
             .tx_buffer = txp,
             .rx_buffer = NULL,
             .flags = 0,
         };
-        esp_err_t ret = spi_device_transmit(spi_handle, &trans);
+        esp_err_t ret = spi_device_queue_trans(spi_handle, &trans[i], portMAX_DELAY);
         if (ret != ESP_OK) {
-            static int err_count = 0;
-            if (err_count++ % 100 == 0)
-                ESP_LOGE(TAG, "SPI draw failed: %s", esp_err_to_name(ret));
+            ESP_LOGE(TAG, "SPI queue failed: %s", esp_err_to_name(ret));
             if (spi_mutex) xSemaphoreGive(spi_mutex);
             return;
         }
         txp += chunk;
         remaining -= chunk;
+    }
+    
+    /* Collect all results */
+    for (int i = 0; i < n_chunks; i++) {
+        spi_transaction_t *ret_trans;
+        esp_err_t ret = spi_device_get_trans_result(spi_handle, &ret_trans, portMAX_DELAY);
+        if (ret != ESP_OK) {
+            static int err_count = 0;
+            if (err_count++ % 100 == 0)
+                ESP_LOGE(TAG, "SPI draw failed: %s", esp_err_to_name(ret));
+        }
     }
     
     if (spi_mutex) xSemaphoreGive(spi_mutex);
@@ -316,7 +327,7 @@ static void spi_init(void)
         .clock_speed_hz = SPI_CLOCK_SPEED,
         .mode = 0,
         .spics_io_num = PIN_NUM_SPI_CS,
-        .queue_size = 7,
+        .queue_size = 64,  // enough for all chunks of a full-screen transfer
         .flags = SPI_DEVICE_HALFDUPLEX,
     };
     
@@ -331,94 +342,50 @@ static void lcd_test_pattern(void)
 {
     ESP_LOGI(TAG, "Drawing test pattern...");
 
-    // 显示狮子图像 (160x155, 居中放置)
     int offset_x = (LCD_WIDTH - image_lionstdio.width) / 2;
     int offset_y = (LCD_HEIGHT - image_lionstdio.height) / 2;
 
-    // 直接在 spi 中逐行传输图像像素，避免额外分配大缓冲区
+    /* Use staging buffer for bulk transfer (same as lcd_draw) */
+    staging_init();
+    if (!spi_staging) return;
+
+    /* Fill staging buffer: black background + centered lion image */
+    uint16_t *fb = (uint16_t *)spi_staging;
+    memset(fb, 0, STAGING_SIZE);
+
+    const uint16_t *img = (const uint16_t *)image_lionstdio.pixel_data;
+    for (int y = 0; y < image_lionstdio.height; y++) {
+        memcpy(fb + (offset_y + y) * LCD_WIDTH + offset_x,
+               img + y * image_lionstdio.width,
+               image_lionstdio.width * 2);
+    }
+
+    /* Queue all chunks so GDMA streams them back-to-back */
     if (spi_mutex) xSemaphoreTake(spi_mutex, portMAX_DELAY);
 
-    // 分三段绘制：上方空白 → 图像(含左右留空) → 下方空白
-    uint16_t *blank_line = malloc(LCD_WIDTH * sizeof(uint16_t));
-    if (blank_line) {
-        memset(blank_line, 0, LCD_WIDTH * sizeof(uint16_t));
+    lcd_set_window(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
+    gpio_set_level(PIN_NUM_SPI_DC, 1);
 
-        // 1) 上方空白
-        for (int y = 0; y < offset_y; y++) {
-            lcd_set_window(0, y, LCD_WIDTH - 1, y);
-            gpio_set_level(PIN_NUM_SPI_DC, 1);
-            spi_transaction_t trans = {
-                .length = LCD_WIDTH * 16,
-                .tx_buffer = blank_line,
-                .rx_buffer = NULL,
-                .flags = 0,
-            };
-            spi_device_transmit(spi_handle, &trans);
-        }
+    int n_chunks = (STAGING_SIZE + SPI_MAX_CHUNK_SIZE - 1) / SPI_MAX_CHUNK_SIZE;
+    spi_transaction_t trans[64];
 
-        // 2) 图像区域：每行 = 左留空 + 图像数据 + 右留空
-        const uint8_t *img_data = image_lionstdio.pixel_data;
-        int img_row_bytes = image_lionstdio.width * 2;
-
-        for (int y = 0; y < image_lionstdio.height; y++) {
-            lcd_set_window(0, offset_y + y, LCD_WIDTH - 1, offset_y + y);
-            gpio_set_level(PIN_NUM_SPI_DC, 1);
-
-            // 左侧空白
-            size_t left_bytes = offset_x * 2;
-            if (left_bytes > 0) {
-                spi_transaction_t trans = {
-                    .length = left_bytes * 8,
-                    .tx_buffer = blank_line,
-                    .rx_buffer = NULL,
-                    .flags = 0,
-                };
-                spi_device_transmit(spi_handle, &trans);
-            }
-
-            // 图像行
-            size_t remaining = img_row_bytes;
-            const uint8_t *line_ptr = img_data + y * img_row_bytes;
-            while (remaining > 0) {
-                size_t chunk = (remaining < SPI_MAX_CHUNK_SIZE) ? remaining : SPI_MAX_CHUNK_SIZE;
-                spi_transaction_t trans = {
-                    .length = chunk * 8,
-                    .tx_buffer = line_ptr,
-                    .rx_buffer = NULL,
-                    .flags = 0,
-                };
-                spi_device_transmit(spi_handle, &trans);
-                line_ptr += chunk;
-                remaining -= chunk;
-            }
-
-            // 右侧空白
-            size_t right_bytes = (LCD_WIDTH - offset_x - image_lionstdio.width) * 2;
-            if (right_bytes > 0) {
-                spi_transaction_t trans = {
-                    .length = right_bytes * 8,
-                    .tx_buffer = blank_line,
-                    .rx_buffer = NULL,
-                    .flags = 0,
-                };
-                spi_device_transmit(spi_handle, &trans);
-            }
-        }
-
-        // 3) 下方空白
-        for (int y = offset_y + image_lionstdio.height; y < LCD_HEIGHT; y++) {
-            lcd_set_window(0, y, LCD_WIDTH - 1, y);
-            gpio_set_level(PIN_NUM_SPI_DC, 1);
-            spi_transaction_t trans = {
-                .length = LCD_WIDTH * 16,
-                .tx_buffer = blank_line,
-                .rx_buffer = NULL,
-                .flags = 0,
-            };
-            spi_device_transmit(spi_handle, &trans);
-        }
-
-        free(blank_line);
+    uint8_t *txp = spi_staging;
+    size_t remaining = STAGING_SIZE;
+    for (int i = 0; i < n_chunks; i++) {
+        size_t chunk = (remaining < SPI_MAX_CHUNK_SIZE) ? remaining : SPI_MAX_CHUNK_SIZE;
+        trans[i] = (spi_transaction_t){
+            .length = chunk * 8,
+            .tx_buffer = txp,
+            .rx_buffer = NULL,
+            .flags = 0,
+        };
+        spi_device_queue_trans(spi_handle, &trans[i], portMAX_DELAY);
+        txp += chunk;
+        remaining -= chunk;
+    }
+    for (int i = 0; i < n_chunks; i++) {
+        spi_transaction_t *ret_trans;
+        spi_device_get_trans_result(spi_handle, &ret_trans, portMAX_DELAY);
     }
 
     if (spi_mutex) xSemaphoreGive(spi_mutex);
@@ -431,33 +398,39 @@ static void lcd_clear_screen(void)
     if (!spi_handle) return;
     
     ESP_LOGI(TAG, "Clearing screen to black");
-    
-    // 分配一行缓冲区
-    uint16_t *black_line = malloc(LCD_WIDTH * sizeof(uint16_t));
-    if (!black_line) {
-        ESP_LOGE(TAG, "Failed to allocate black line buffer");
-        return;
-    }
-    memset(black_line, 0, LCD_WIDTH * sizeof(uint16_t));
+
+    staging_init();
+    if (!spi_staging) return;
+    memset(spi_staging, 0, STAGING_SIZE);
     
     if (spi_mutex) xSemaphoreTake(spi_mutex, portMAX_DELAY);
     
-    for (int y = 0; y < LCD_HEIGHT; y++) {
-        lcd_set_window(0, y, LCD_WIDTH - 1, y);
-        gpio_set_level(PIN_NUM_SPI_DC, 1);
-        
-        spi_transaction_t trans = {
-            .length = LCD_WIDTH * 16,
-            .tx_buffer = black_line,
+    lcd_set_window(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
+    gpio_set_level(PIN_NUM_SPI_DC, 1);
+    
+    int n_chunks = (STAGING_SIZE + SPI_MAX_CHUNK_SIZE - 1) / SPI_MAX_CHUNK_SIZE;
+    spi_transaction_t trans[64];
+    
+    uint8_t *txp = spi_staging;
+    size_t remaining = STAGING_SIZE;
+    for (int i = 0; i < n_chunks; i++) {
+        size_t chunk = (remaining < SPI_MAX_CHUNK_SIZE) ? remaining : SPI_MAX_CHUNK_SIZE;
+        trans[i] = (spi_transaction_t){
+            .length = chunk * 8,
+            .tx_buffer = txp,
             .rx_buffer = NULL,
             .flags = 0,
         };
-        
-        spi_device_transmit(spi_handle, &trans);
+        spi_device_queue_trans(spi_handle, &trans[i], portMAX_DELAY);
+        txp += chunk;
+        remaining -= chunk;
+    }
+    for (int i = 0; i < n_chunks; i++) {
+        spi_transaction_t *ret_trans;
+        spi_device_get_trans_result(spi_handle, &ret_trans, portMAX_DELAY);
     }
     
     if (spi_mutex) xSemaphoreGive(spi_mutex);
-    free(black_line);
     
     ESP_LOGI(TAG, "Screen cleared");
 }

@@ -88,16 +88,51 @@ static inline void send_key(int is_down, int keycode)
     }
 }
 #ifndef RETRO_GO
-#define RG_KEY_UP       GPIO_NUM_11
-#define RG_KEY_DOWN     GPIO_NUM_12
-#define RG_KEY_LEFT     GPIO_NUM_13
-#define RG_KEY_RIGHT    GPIO_NUM_14
-#define RG_KEY_START    GPIO_NUM_21
-#define RG_KEY_SELECT   GPIO_NUM_47
-#define RG_KEY_X        GPIO_NUM_41
-#define RG_KEY_Y        GPIO_NUM_42
-#define RG_KEY_A        GPIO_NUM_0
-#define RG_KEY_B        GPIO_NUM_48
+
+#ifdef RG_BATTERY_KEY
+void ip5306_key_init(void)
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RG_BATTERY_KEY),
+        .mode = GPIO_MODE_OUTPUT_OD,        // 开漏输出模式
+        .pull_up_en = GPIO_PULLUP_DISABLE,  // 禁用内部上拉
+        .pull_down_en = GPIO_PULLDOWN_DISABLE, // 禁用内部下拉
+        .intr_type = GPIO_INTR_DISABLE      // 不使用中断
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    
+    // 初始状态：高电平（开漏模式下=高阻态，相当于按键松开）
+    gpio_set_level(RG_BATTERY_KEY, 1);
+}
+
+/**
+ * @brief 模拟一次短按动作
+ *        开漏模式下，低电平 = 导通NMOS = 拉低KEY引脚 = 按键按下
+ *        开漏模式下，高电平 = 关断NMOS = KEY引脚浮空(由IP5306内部上拉) = 按键松开
+ */
+void ip5306_short_press(void)
+{
+    // 按键按下：输出低电平
+    gpio_set_level(RG_BATTERY_KEY, 0);
+    
+    // 保持按下状态 (100ms)
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // 按键松开：输出高电平（开漏模式下=高阻态）
+    gpio_set_level(RG_BATTERY_KEY, 1);
+    
+    // 确保松开后稳定一小段时间
+    vTaskDelay(pdMS_TO_TICKS(10));
+}
+void keep_ip5306_alive_task(void *pvParameters)
+{
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+        ip5306_short_press();              // 执行短按刷新
+    }
+}
+#endif
+
 typedef struct {
     gpio_num_t gpio;
     uint8_t    keycode;        /* PS/2 scancode sent to the emulator */
@@ -388,6 +423,14 @@ void input_init(void)
     ESP_LOGI(TAG, "Using rg_input_read_gamepad() instead of direct GPIO polling");
     prev_joystick = 0;
     arrow_held_key = 0;
+    
+#ifdef RG_BATTERY_KEY
+    ip5306_key_init();
+    vTaskDelay(pdMS_TO_TICKS(100));
+    // 3. 启动IP5306输出（模拟一次短按唤醒）
+    ip5306_short_press();
+    xTaskCreatePinnedToCore(&keep_ip5306_alive_task, "keep_alive_task", 4096, NULL, 0, NULL, 0);
+#endif
 }
 
 /* Screenshot (BMP format) */
@@ -444,7 +487,7 @@ void screenshot_save(void)
     char path[RG_PATH_MAX + 1];
     snprintf(path, RG_PATH_MAX, "%s/screenshot.bmp", RG_BASE_PATH_SAVES);
 #else
-    const char *path = "/sdcard/screenshot.bmp";
+    const char *path = "/sd/screenshot.bmp";
 #endif
     FILE *fp = fopen(path, "wb");
     if (!fp) {

@@ -62,3 +62,4 @@
 #define RG_KEY_Y        GPIO_NUM_47
 #define RG_KEY_A        GPIO_NUM_44
 #define RG_KEY_B        GPIO_NUM_45
+#define RG_BATTERY_KEY  GPIO_NUM_28

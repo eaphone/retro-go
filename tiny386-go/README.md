@@ -19,19 +19,28 @@ tiny386 emulates 8086/80186/386 processors with:
 ### Build command
 \\\ash
 cd retro-go-master/tiny386-go
-idf.py -B build -DBOARD=esp32s3 build
+idf.py -B build -DBOARD=esp32p4 build
 \\\
 
-Replace \esp32s3\ with your board name (see boards in components/tiny386-go/esp/main/)
+Replace \esp32p4\ with your board name (see boards in components/tiny386-go/esp/main/)
+
+### Build tiny386 as standalone binary.
+tiny386 could be run as standalone binary without retro-go.
+\\\ash
+make prepare
+cd esp
+idf.py -DBOARD=esp32p4 update-dependencies build
+\\\
 
 ## Configuration
 
-Place \	iny386.ini\ in \/sdcard/retro-go/roms/tiny386/\ or select it from the file browser.
+Place \	iny386.ini\ as \/sd/roms/dos/.system/tiny386.ini/\ or select it from the file browser.
 
 ## Supported Boards
 
 | Board name | Description |
 |-----------|-------------|
+| esp32p4 | ESP32-P4-DevKitC with ILI9341 LCD (320x240) |
 | esp32s3 | ESP32-S3-DevKitC with ILI9341 LCD (320x240) |
 | jc3248w535 | JC3248W535 LCD |
 | elecrow7s3 | Elecrow 7" S3 display |

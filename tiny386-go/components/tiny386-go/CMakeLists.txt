@@ -10,7 +10,7 @@ if(NOT DEFINED BOARD)
     if(DEFINED ENV{BOARD})
         set(BOARD {BOARD})
     else()
-        set(BOARD "esp32s3")
+        set(BOARD "esp32p4")
     endif()
 endif()
 

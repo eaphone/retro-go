@@ -32,13 +32,13 @@
 // The LCD panel refreshes at 60Hz, so rendering faster is wasted work.
 #define RETRACE_INTERVAL_US 16667
 
-// SD card: SPI mode via SPI3_HOST
-#define SD_SPI_HOST SPI3_HOST
-#define SD_SPI_MISO  GPIO_NUM_8
-#define SD_SPI_MOSI  GPIO_NUM_6
-#define SD_SPI_SCK   GPIO_NUM_7
-#define SD_SPI_CS    GPIO_NUM_9
-#define SD_SPI_FREQ_KHZ 20000
+// SD card: SDMMC 1-bit native mode via GPIO matrix (Slot 1)
+// Pin mapping matches retro-go esp32-p4-devkit target
+#define SDMMC_HOST_SLOT  SDMMC_HOST_SLOT_1
+#define SDMMC_CLK        GPIO_NUM_7
+#define SDMMC_CMD        GPIO_NUM_8
+#define SDMMC_D0         GPIO_NUM_6
+#define SDMMC_FREQ_KHZ   SDMMC_FREQ_HIGHSPEED
 
 // I2C for backlight (CH422G I/O expander)
 

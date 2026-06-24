@@ -285,6 +285,10 @@ Console *console_init(int width, int height)
 }
 
 void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src);
+
+/* Dirty-rect accumulator — shared with lcd_flush_dirty() in lcd_ili9341.c */
+void lcd_flush_dirty(void);
+
 static void redraw(void *opaque,
 		   int x, int y, int w, int h)
 {
@@ -298,7 +302,19 @@ static void redraw(void *opaque,
 	if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
 	if (w <= 0 || h <= 0) return;
 
-	lcd_draw(x, y, x + w, y + h, s->fb);
+	/* Accumulate into union bounding box for batched SPI transfer.
+	 * lcd_flush_dirty() will send one combined rect per frame. */
+	extern int dr_x1, dr_y1, dr_x2, dr_y2, dr_dirty;
+	if (!dr_dirty) {
+		dr_x1 = x; dr_y1 = y;
+		dr_x2 = x + w; dr_y2 = y + h;
+		dr_dirty = 1;
+	} else {
+		if (x < dr_x1) dr_x1 = x;
+		if (y < dr_y1) dr_y1 = y;
+		if (x + w > dr_x2) dr_x2 = x + w;
+		if (y + h > dr_y2) dr_y2 = y + h;
+	}
 }
     
 void *esp_psram_get(size_t *size);
@@ -493,12 +509,11 @@ void app_main(void)
 	psram = heap_caps_calloc(1, psram_len, MALLOC_CAP_SPIRAM);
 #endif
 
-				const static char *files[] = {
-					"/sdcard/tiny386.ini",
-					"/sdcard/roms/dos/.system/tiny386.ini",
-					"/spiflash/tiny386.ini",
-					NULL,
-				};
+	const static char *files[] = {
+		"/sd/roms/dos/.system/tiny386.ini",
+		"/spiflash/tiny386.ini",
+		NULL,
+	};
 	static struct esp_ini_config config;
 	bool ini_found = false;
 	for (int i = 0; files[i]; i++) {

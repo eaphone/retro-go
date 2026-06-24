@@ -26,17 +26,6 @@
 static const char *TAG = "storage";
 sdmmc_card_t *rawsd = NULL;
 static wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
-#define TEST_SD_SPI_HOST 	SD_SPI_HOST    
-
-/* ---- SD 卡传输回调 ---- */
-static esp_err_t sdcard_do_transaction(int slot, sdmmc_command_t *cmdinfo)
-{
-    esp_err_t ret = sdspi_host_do_transaction(slot, cmdinfo);
-    if (ret == ESP_ERR_NO_MEM) {
-        ESP_LOGW(TAG, "SD card transaction out of memory");
-    }
-    return ret;
-}
 
 /* ---- Native tiny386 storage_init (used when NOT built under retro-go) ---- */
 #ifndef RETRO_GO
@@ -44,7 +33,10 @@ static esp_err_t sdcard_do_transaction(int slot, sdmmc_command_t *cmdinfo)
 void storage_init(void)
 {
     bool sd_mount_ok = false;
+    sdmmc_card_t *card = NULL;
     
+#ifdef esp32s3
+
     ESP_LOGI(TAG, "Initializing SD card on SPI%d...", TEST_SD_SPI_HOST);
     
     // 1. 初始化 SPI 总线（使用 DMA，SDSPI 需要）
@@ -81,13 +73,13 @@ void storage_init(void)
     
     // 3. 配置 SDSPI 主机驱动
     sdmmc_host_t host_config = SDSPI_HOST_DEFAULT();
-    host_config.slot = TEST_SD_SPI_HOST;
+    host_config.slot = SD_SPI_HOST;
     host_config.max_freq_khz = SD_SPI_FREQ_KHZ;
     host_config.do_transaction = sdcard_do_transaction;
     
     // 4. 配置 SDSPI 设备
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.host_id = TEST_SD_SPI_HOST;
+    slot_config.host_id = SD_SPI_HOST;
     slot_config.gpio_cs = SD_SPI_CS;
     slot_config.gpio_cd = GPIO_NUM_NC;
     slot_config.gpio_wp = GPIO_NUM_NC;
@@ -99,10 +91,8 @@ void storage_init(void)
         .allocation_unit_size = 0,
     };
     
-    sdmmc_card_t *card = NULL;
-    
         // 6. 尝试挂载（让 sdspi_host 自动处理初始化）
-    esp_err_t err = esp_vfs_fat_sdspi_mount("/sdcard", &host_config, &slot_config, &mount_config, &card);
+    esp_err_t err = esp_vfs_fat_sdspi_mount("/sd", &host_config, &slot_config, &mount_config, &card);
     
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Mount failed at %d kHz (0x%x), trying slower speed...", 
@@ -111,7 +101,7 @@ void storage_init(void)
         // 降速前复位 SD 卡：发送至少 80 个时钟周期（CS=高），让卡状态机重置
         ESP_LOGI(TAG, "Resetting SD card for retry at lower speed...");
         if (card) {
-            esp_vfs_fat_sdcard_unmount("/sdcard", card);
+            esp_vfs_fat_sdcard_unmount("/sd", card);
             card = NULL;
         }
         gpio_set_level(SD_SPI_CS, 1);
@@ -125,9 +115,50 @@ void storage_init(void)
         vTaskDelay(pdMS_TO_TICKS(10));
         
         host_config.max_freq_khz = SDMMC_FREQ_PROBING;  // 400kHz
-        err = esp_vfs_fat_sdspi_mount("/sdcard", &host_config, &slot_config, &mount_config, &card);
+        err = esp_vfs_fat_sdspi_mount("/sd", &host_config, &slot_config, &mount_config, &card);
     }
+#else
+    ESP_LOGI(TAG, "Initializing SD card via SDMMC Slot %d...", SDMMC_HOST_SLOT);
     
+    // 1. Configure SDMMC host (native mode, matching retro-go esp32-p4-devkit)
+    sdmmc_host_t host_config = SDMMC_HOST_DEFAULT();
+    host_config.slot = SDMMC_HOST_SLOT;
+    host_config.max_freq_khz = SDMMC_FREQ_KHZ;
+
+    // 2. Configure SDMMC slot with GPIO matrix pins
+    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+    slot_config.width = 1;  // 1-bit mode
+    slot_config.clk = SDMMC_CLK;
+    slot_config.cmd = SDMMC_CMD;
+    slot_config.d0  = SDMMC_D0;
+    // d1-d3 not used in 1-bit mode, set to -1
+    slot_config.d1 = slot_config.d2 = slot_config.d3 = GPIO_NUM_NC;
+
+    // 3. FAT mount config
+    esp_vfs_fat_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 0,
+    };
+    
+    // 4. Mount SD card
+    esp_err_t err = esp_vfs_fat_sdmmc_mount("/sd", &host_config, &slot_config, &mount_config, &card);
+    
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Mount failed at %d kHz (0x%x), retrying at lower speed...",
+                 SDMMC_FREQ_KHZ, err);
+
+        /* If a partially-initialized card was returned, clean it up first */
+        if (card) {
+            esp_vfs_fat_sdcard_unmount("/sd", card);
+            card = NULL;
+        }
+
+        host_config.max_freq_khz = SDMMC_FREQ_PROBING;  // 400kHz
+        err = esp_vfs_fat_sdmmc_mount("/sd", &host_config, &slot_config, &mount_config, &card);
+    }
+#endif
+
     if (err == ESP_OK) {
         sd_mount_ok = true;
         rawsd = card;

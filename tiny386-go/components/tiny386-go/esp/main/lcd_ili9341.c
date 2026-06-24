@@ -21,7 +21,8 @@ extern void vk_draw(void);
 extern int emu_paused;
 void pc_vga_step(void *o);
 static const char *TAG = "lcd";
-#define SPI_MAX_CHUNK_SIZE     (4096)  // 每次最多传输 4KB
+// ESP32P4 GDMA max per descriptor ≈ 4095; stay safe at 4092
+#define SPI_MAX_CHUNK_SIZE     (4092)
 
 /* ---- 显示参数 ---- */
 #define LCD_WIDTH               (320)
@@ -30,7 +31,7 @@ static const char *TAG = "lcd";
 
 
 /* ---- SPI 配置 ---- */
-#define SPI_CLOCK_SPEED         (40 * 1000 * 1000)  // 40MHz
+#define SPI_CLOCK_SPEED         (80 * 1000 * 1000)  // 80MHz (ESP32P4 + short traces)
 
 /* ---- 背光 PWM ---- */
 #define LCD_LEDC_CH             1
@@ -113,6 +114,27 @@ static void lcd_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 }
 
 /* ---- lcd_draw 函数：绘制矩形区域 ---- */
+
+/* DMA-capable staging buffer so we can pack non-contiguous framebuffer
+ * rows into a single SPI transaction instead of one transaction per row.
+ * 320×240×2 = 153600 bytes max.  MALLOC_CAP_DMA ensures it can be used
+ * directly with SPI DMA on ESP32P4 (PSRAM is DMA-capable on this target). */
+static uint8_t *spi_staging = NULL;
+#define STAGING_SIZE (LCD_WIDTH * LCD_HEIGHT * 2)
+
+static void staging_init(void)
+{
+    if (!spi_staging) {
+        spi_staging = heap_caps_malloc(STAGING_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_SPIRAM);
+        if (!spi_staging) spi_staging = heap_caps_malloc(STAGING_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+        if (!spi_staging) {
+            ESP_LOGE(TAG, "FATAL: Cannot allocate SPI staging buffer!");
+            return;
+        }
+        ESP_LOGI(TAG, "SPI staging buffer: %p (%d bytes)", spi_staging, STAGING_SIZE);
+    }
+}
+
 void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src)
 {
     if (!spi_handle || !src) return;
@@ -128,52 +150,64 @@ void lcd_draw(int x_start, int y_start, int x_end, int y_end, void *src)
     int height = y_end - y_start;
     int row_bytes = width * 2;            // 每行像素字节数 (BPP=16)
     int stride = LCD_WIDTH * 2;           // 源 framebuffer 行跨度（字节）
+    int total_bytes = row_bytes * height;
     
-    // 取互斥锁
+    /* Ensure staging buffer is ready */
+    staging_init();
+    if (!spi_staging) {
+        /* Fallback: per-row transfer (slow) */
+        uint8_t *base = (uint8_t *)src;
+        if (spi_mutex) xSemaphoreTake(spi_mutex, portMAX_DELAY);
+        lcd_set_window(x_start, y_start, x_end - 1, y_end - 1);
+        gpio_set_level(PIN_NUM_SPI_DC, 1);
+        for (int row = 0; row < height; row++) {
+            uint8_t *line_start = base + (y_start + row) * stride + x_start * 2;
+            spi_transaction_t trans = {
+                .length = row_bytes * 8,
+                .tx_buffer = line_start,
+                .rx_buffer = NULL, .flags = 0,
+            };
+            spi_device_transmit(spi_handle, &trans);
+        }
+        if (spi_mutex) xSemaphoreGive(spi_mutex);
+        return;
+    }
+    
+    /* Pack non-contiguous framebuffer rows into contiguous staging buffer */
+    uint8_t *base = (uint8_t *)src;
+    uint8_t *dst = spi_staging;
+    for (int row = 0; row < height; row++) {
+        memcpy(dst, base + (y_start + row) * stride + x_start * 2, row_bytes);
+        dst += row_bytes;
+    }
+    
+    /* One single DMA SPI transaction for the entire dirty rect */
     if (spi_mutex) xSemaphoreTake(spi_mutex, portMAX_DELAY);
     
-    // 设置窗口
     lcd_set_window(x_start, y_start, x_end - 1, y_end - 1);
-    gpio_set_level(PIN_NUM_SPI_DC, 1);  // 数据模式
+    gpio_set_level(PIN_NUM_SPI_DC, 1);
     
-    /*
-     * 逐行传输像素。
-     *
-     * ILI9341 在写入 RAMWR 后，GRAM 地址会在窗口内自动换列/换行，
-     * 所以我们只需要逐行地向它发送连续的像素流。
-     *
-     * 但 framebuffer 的 stride (= LCD_WIDTH×2) 可能大于 window 的
-     * 行字节数 (= width×2)，所以不能把整个矩形当作一块连续内存
-     * 发送 —— 必须逐行处理，每行从正确的 framebuffer 偏移处读取。
-     */
-    uint8_t *base = (uint8_t *)src;
-    for (int row = 0; row < height; row++) {
-        uint8_t *line_start = base + (y_start + row) * stride + x_start * 2;
-        size_t remaining = row_bytes;
-        
-        while (remaining > 0) {
-            size_t chunk = (remaining < SPI_MAX_CHUNK_SIZE) ? remaining : SPI_MAX_CHUNK_SIZE;
-            
-            spi_transaction_t trans = {
-                .length = chunk * 8,
-                .tx_buffer = line_start,
-                .rx_buffer = NULL,
-                .flags = 0,
-            };
-            
-            esp_err_t ret = spi_device_transmit(spi_handle, &trans);
-            if (ret != ESP_OK) {
-                static int err_count = 0;
-                if (err_count++ % 100 == 0) {
-                    ESP_LOGE(TAG, "SPI draw failed: %s", esp_err_to_name(ret));
-                }
-                if (spi_mutex) xSemaphoreGive(spi_mutex);
-                return;
-            }
-            
-            line_start += chunk;
-            remaining -= chunk;
+    /* Chunk to SPI_MAX_CHUNK_SIZE for DMA compatibility */
+    uint8_t *txp = spi_staging;
+    size_t remaining = total_bytes;
+    while (remaining > 0) {
+        size_t chunk = (remaining < SPI_MAX_CHUNK_SIZE) ? remaining : SPI_MAX_CHUNK_SIZE;
+        spi_transaction_t trans = {
+            .length = chunk * 8,
+            .tx_buffer = txp,
+            .rx_buffer = NULL,
+            .flags = 0,
+        };
+        esp_err_t ret = spi_device_transmit(spi_handle, &trans);
+        if (ret != ESP_OK) {
+            static int err_count = 0;
+            if (err_count++ % 100 == 0)
+                ESP_LOGE(TAG, "SPI draw failed: %s", esp_err_to_name(ret));
+            if (spi_mutex) xSemaphoreGive(spi_mutex);
+            return;
         }
+        txp += chunk;
+        remaining -= chunk;
     }
     
     if (spi_mutex) xSemaphoreGive(spi_mutex);
@@ -275,7 +309,7 @@ static void spi_init(void)
 		.sclk_io_num = PIN_NUM_SPI_SCLK,
 		.quadwp_io_num = -1,
 		.quadhd_io_num = -1,
-		.max_transfer_sz = SPI_MAX_CHUNK_SIZE,  // 限制为 4KB
+		.max_transfer_sz = SPI_MAX_CHUNK_SIZE,  // must match chunk size in lcd_draw()
 	};
     
     spi_device_interface_config_t devcfg = {
@@ -428,6 +462,28 @@ static void lcd_clear_screen(void)
     ESP_LOGI(TAG, "Screen cleared");
 }
 
+/* Dirty-rect accumulation for batched SPI transfers.
+ * VGA refresh may call redraw() many times per frame (once per changed
+ * text line).  Instead of starting a new SPI transaction for each tiny
+ * rect, we accumulate the bounding box and flush once at the end. */
+int dr_x1, dr_y1, dr_x2, dr_y2;
+int dr_dirty;
+
+void lcd_flush_dirty(void)
+{
+    if (!dr_dirty) return;
+    dr_dirty = 0;
+    if (dr_x1 < 0) dr_x1 = 0;
+    if (dr_y1 < 0) dr_y1 = 0;
+    if (dr_x2 > LCD_WIDTH) dr_x2 = LCD_WIDTH;
+    if (dr_y2 > LCD_HEIGHT) dr_y2 = LCD_HEIGHT;
+    if (dr_x1 >= dr_x2 || dr_y1 >= dr_y2) return;
+    extern uint8_t *g_framebuffer;
+    if (g_framebuffer) {
+        lcd_draw(dr_x1, dr_y1, dr_x2, dr_y2, g_framebuffer);
+    }
+}
+
 /* ---- VGA 主任务 ---- */
 void vga_task(void *arg)
 {
@@ -477,7 +533,7 @@ void vga_task(void *arg)
     // 等待 PC 模拟器初始化完成
     xEventGroupWaitBits(global_event_group, BIT0, pdFALSE, pdFALSE, portMAX_DELAY);
     
-        ESP_LOGI(TAG, "Starting VGA loop");
+    ESP_LOGI(TAG, "Starting VGA loop");
 #ifndef RETRO_GO
     extern uint8_t *g_framebuffer;
 #else
@@ -485,24 +541,34 @@ void vga_task(void *arg)
 #endif
     uint32_t frame = 0;
     
+    /* Force a full-screen refresh on the first frame */
+    dr_x1 = 0; dr_y1 = 0; dr_x2 = LCD_WIDTH; dr_y2 = LCD_HEIGHT;
+    dr_dirty = 1;
+    
     while (1) {
         if (emu_paused) {
             vTaskDelay(pdMS_TO_TICKS(16));
             continue;
-        }else{
+        }
+
+        /* Flush accumulated dirty rects from the previous VGA refresh cycle */
     #ifdef RETRO_GO
-            extern void rg_display_flush(void);
-            rg_display_flush();
+        extern void rg_display_flush(void);
+        rg_display_flush();
     #else
-            if (g_framebuffer) {
-                lcd_draw(0, 0, LCD_WIDTH, LCD_HEIGHT, g_framebuffer);
-            }
+        lcd_flush_dirty();
     #endif
-            pc_vga_step(globals.pc);
-            
-            if (menu_active || vk_active) {
-                menu_tick();
-            }
+
+        /* Do the VGA refresh (may call redraw() many times);
+         * redraw() accumulates into dr_x1..dr_y2. */
+        pc_vga_step(globals.pc);
+
+        if (menu_active || vk_active) {
+            menu_tick();
+            /* Menu overlays always force full-screen dirty */
+            dr_x1 = 0; dr_y1 = 0;
+            dr_x2 = LCD_WIDTH; dr_y2 = LCD_HEIGHT;
+            dr_dirty = 1;
         }
         
         vTaskDelay(pdMS_TO_TICKS(16));  /* ~60 fps */

@@ -43,6 +43,16 @@ static const char *TAG = "input";
 extern int InputMode;
 
 /* PS/2 Set 1 scancodes (keycodes used by ps2_put_keycode) */
+#define RG_KEY_UP       0x0004
+#define RG_KEY_DOWN     0x0008
+#define RG_KEY_LEFT     0x0001
+#define RG_KEY_RIGHT    0x0002
+#define RG_KEY_START    0x0040
+#define RG_KEY_SELECT   0x0080
+#define RG_KEY_X        0x0400
+#define RG_KEY_Y        0x0800
+#define RG_KEY_A        0x0010
+#define RG_KEY_B        0x0020
 #define KEYCODE_UP        0x67
 #define KEYCODE_DOWN      0x6c
 #define KEYCODE_LEFT      0x69
@@ -135,26 +145,27 @@ void keep_ip5306_alive_task(void *pvParameters)
 
 typedef struct {
     gpio_num_t gpio;
-    uint8_t    keycode;        /* PS/2 scancode sent to the emulator */
-    uint8_t    prev_state;     /* 1 = pressed, 0 = released */
-    uint8_t    sent_release;   /* 1 = release already sent for this press */
-    uint32_t   press_time;     /* tick when button was pressed (for repeat delay) */
-    uint32_t   last_repeat;    /* tick when last repeat key was sent */
-    uint8_t    is_scroll;      /* 1 = this button is a direction (for scroll combo) */
-    uint8_t    repeatable;     /* 1 = held key triggers repeats */
+    uint32_t   bitmask;       /* RG_KEY_* bitmask for joystick tracking */
+    uint8_t    keycode;       /* PS/2 scancode sent to the emulator */
+    uint8_t    prev_state;    /* 1 = pressed, 0 = released */
+    uint8_t    sent_release;  /* 1 = release already sent for this press */
+    uint32_t   press_time;    /* tick when button was pressed (for repeat delay) */
+    uint32_t   last_repeat;   /* tick when last repeat key was sent */
+    uint8_t    is_scroll;     /* 1 = this button is a direction (for scroll combo) */
+    uint8_t    repeatable;    /* 1 = held key triggers repeats */
 } button_t;
 
 static button_t buttons[10] = {
-    { .gpio = RG_KEY_UP,     .keycode = KEYCODE_UP,     .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
-    { .gpio = RG_KEY_DOWN,   .keycode = KEYCODE_DOWN,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
-    { .gpio = RG_KEY_LEFT,   .keycode = KEYCODE_LEFT,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
-    { .gpio = RG_KEY_RIGHT,  .keycode = KEYCODE_RIGHT,  .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
-    { .gpio = RG_KEY_A,      .keycode = KEYCODE_SPACE,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 1 }, /* A → Space (Select+A → Enter) */
-    { .gpio = RG_KEY_B,      .keycode = KEYCODE_ESC,      .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* B → ESC (Select+B → Backspace) */
-    { .gpio = RG_KEY_START,  .keycode = 0,               .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* screenshot */
-    { .gpio = RG_KEY_SELECT, .keycode = 0,               .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* combo only */
-    { .gpio = RG_KEY_X,      .keycode = KEYCODE_N,       .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* X → N */
-    { .gpio = RG_KEY_Y,      .keycode = KEYCODE_Y,       .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* Y → Y */
+    { .gpio = GPIO_KEY_UP,     .bitmask = RG_KEY_UP,     .keycode = KEYCODE_UP,     .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
+    { .gpio = GPIO_KEY_DOWN,   .bitmask = RG_KEY_DOWN,   .keycode = KEYCODE_DOWN,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
+    { .gpio = GPIO_KEY_LEFT,   .bitmask = RG_KEY_LEFT,   .keycode = KEYCODE_LEFT,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
+    { .gpio = GPIO_KEY_RIGHT,  .bitmask = RG_KEY_RIGHT,  .keycode = KEYCODE_RIGHT,  .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 1, .repeatable = 1 },
+    { .gpio = GPIO_KEY_A,      .bitmask = RG_KEY_A,      .keycode = KEYCODE_SPACE,   .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 1 }, /* A → Space (Select+A → Enter) */
+    { .gpio = GPIO_KEY_B,      .bitmask = RG_KEY_B,      .keycode = KEYCODE_ESC,      .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* B → ESC (Select+B → Backspace) */
+    { .gpio = GPIO_KEY_START,  .bitmask = RG_KEY_START,  .keycode = 0,               .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* screenshot */
+    { .gpio = GPIO_KEY_SELECT, .bitmask = RG_KEY_SELECT, .keycode = 0,               .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* combo only */
+    { .gpio = GPIO_KEY_X,      .bitmask = RG_KEY_X,      .keycode = KEYCODE_N,       .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* X → N */
+    { .gpio = GPIO_KEY_Y,      .bitmask = RG_KEY_Y,      .keycode = KEYCODE_Y,       .prev_state = 0, .sent_release = 1, .press_time = 0, .last_repeat = 0, .is_scroll = 0, .repeatable = 0 }, /* Y → Y */
 };
 #endif
 
@@ -191,8 +202,8 @@ void input_process(void)
     for (int i = 0; i < 10; i++) {
         button_t *btn = &buttons[i];
         int level = gpio_get_level(btn->gpio);
-        if (level) {
-            joystick |= btn->keycode;
+        if (!level) {  // active low: pull-up + button press = GND = 0
+            joystick |= btn->bitmask;
         }
     }
 #endif
@@ -419,8 +430,25 @@ static void handle_scroll(int dir_x, int dir_y)
 /* Initialize retro-go based input (no GPIO setup needed) */
 void input_init(void)
 {
-    ESP_LOGI(TAG, "Initializing retro-go input integration");
-    ESP_LOGI(TAG, "Using rg_input_read_gamepad() instead of direct GPIO polling");
+#ifndef RETRO_GO
+    // Standalone mode: configure button GPIOs with pull-ups
+    gpio_config_t io_conf = {
+        .pin_bit_mask =
+            (1ULL << GPIO_KEY_UP)    | (1ULL << GPIO_KEY_DOWN)  |
+            (1ULL << GPIO_KEY_LEFT)  | (1ULL << GPIO_KEY_RIGHT) |
+            (1ULL << GPIO_KEY_A)     | (1ULL << GPIO_KEY_B)     |
+            (1ULL << GPIO_KEY_START) | (1ULL << GPIO_KEY_SELECT)|
+            (1ULL << GPIO_KEY_X)     | (1ULL << GPIO_KEY_Y),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+    ESP_LOGI(TAG, "GPIO button pins configured (10 buttons)");
+#endif
+
+    ESP_LOGI(TAG, "Initializing input");
     prev_joystick = 0;
     arrow_held_key = 0;
     

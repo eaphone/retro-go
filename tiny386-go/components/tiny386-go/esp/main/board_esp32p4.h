@@ -52,14 +52,15 @@
 #define I2S_WS   GPIO_NUM_2
 #define I2S_DOUT GPIO_NUM_3
 
-#define RG_KEY_UP       GPIO_NUM_35
-#define RG_KEY_DOWN     GPIO_NUM_39
-#define RG_KEY_LEFT     GPIO_NUM_40
-#define RG_KEY_RIGHT    GPIO_NUM_41
-#define RG_KEY_START    GPIO_NUM_42
-#define RG_KEY_SELECT   GPIO_NUM_43
-#define RG_KEY_X        GPIO_NUM_46
-#define RG_KEY_Y        GPIO_NUM_47
-#define RG_KEY_A        GPIO_NUM_44
-#define RG_KEY_B        GPIO_NUM_45
+// GPIO pin numbers for physical buttons (used by input.c buttons[] array)
+#define GPIO_KEY_UP      GPIO_NUM_35
+#define GPIO_KEY_DOWN    GPIO_NUM_39
+#define GPIO_KEY_LEFT    GPIO_NUM_40
+#define GPIO_KEY_RIGHT   GPIO_NUM_41
+#define GPIO_KEY_START   GPIO_NUM_42
+#define GPIO_KEY_SELECT  GPIO_NUM_43
+#define GPIO_KEY_X       GPIO_NUM_46
+#define GPIO_KEY_Y       GPIO_NUM_47
+#define GPIO_KEY_A       GPIO_NUM_44
+#define GPIO_KEY_B       GPIO_NUM_45
 #define RG_BATTERY_KEY  GPIO_NUM_28

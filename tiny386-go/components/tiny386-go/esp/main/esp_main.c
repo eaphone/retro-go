@@ -323,6 +323,7 @@ void i2s_main();
 void wifi_main(const char *, const char *);
 void storage_init(void);
 void input_init(void);
+void input_process(void);
 static int pc_main(const char *file)
 {
 	PCConfig conf;
@@ -381,6 +382,7 @@ static int pc_main(const char *file)
 			/* Menu active: check every 50ms whether to resume */
 			vTaskDelay(pdMS_TO_TICKS(50));
 		}
+		input_process();
 		pc_step(pc);
 	}
 	return 0;

@@ -24,27 +24,22 @@ set(COMPONENT_REQUIRES "retro-go vfs")
 
 register_component()
 
-# Board selection: -DBOARD=<name> via cmake/idf.py, or BOARD env var, or default esp32s3.
-if(NOT DEFINED BOARD)
-    if(DEFINED ENV{BOARD})
-        set(BOARD {BOARD})
-    else()
-        set(BOARD "esp32p4")
-    endif()
+# Core tiny386 sources
+# ESP32-P4 has very limited sram_low (~179KB), CPU emulator must stay in flash
+if(IDF_TARGET STREQUAL "esp32p4")
+    set(BOARD "esp32p4")
+    set(TINY386_IRAM_FLAGS "-DTINY386_NO_IRAM")
+else()
+    set(BOARD "esp32s3")
+    set(TINY386_IRAM_FLAGS "")
 endif()
+# Board selection: -DBOARD=<name> via cmake/idf.py, or BOARD env var, or default esp32s3.
 
 message(STATUS "tiny386-go building for BOARD=")
 
 # Force-include the board config header for all source files in this component
 add_definitions(-include "${CMAKE_CURRENT_SOURCE_DIR}/esp/main/board_${BOARD}.h")
 
-# Core tiny386 sources
-# ESP32-P4 has very limited sram_low (~179KB), CPU emulator must stay in flash
-if(IDF_TARGET STREQUAL "esp32p4")
-    set(TINY386_IRAM_FLAGS "-DTINY386_NO_IRAM")
-else()
-    set(TINY386_IRAM_FLAGS "")
-endif()
 set_source_files_properties("adlib.c" PROPERTIES COMPILE_FLAGS "-Wno-all")
 set_source_files_properties("fmopl.c" PROPERTIES COMPILE_FLAGS "-Wno-all -fsingle-precision-constant")
 set_source_files_properties("fpu.c" PROPERTIES COMPILE_FLAGS "-Wno-all")

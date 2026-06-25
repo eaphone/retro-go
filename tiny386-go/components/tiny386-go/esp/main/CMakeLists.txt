@@ -47,7 +47,7 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
 )
 
 # O3 for performance-critical files (+ optional TINY386_NO_IRAM for ESP32-P4)
-if(IDF_TARGET STREQUAL "esp32p4")
+if(BOARD STREQUAL "esp32p4")
     set_source_files_properties("${TINY386_DIR}/i386.c" PROPERTIES COMPILE_FLAGS "-O3 -DTINY386_NO_IRAM")
     set_source_files_properties("${TINY386_DIR}/vga.c" PROPERTIES COMPILE_FLAGS "-O3 -DTINY386_NO_IRAM")
 else()

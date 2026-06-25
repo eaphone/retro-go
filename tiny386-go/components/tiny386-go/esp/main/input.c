@@ -43,6 +43,9 @@ static const char *TAG = "input";
 extern int InputMode;
 
 /* PS/2 Set 1 scancodes (keycodes used by ps2_put_keycode) */
+/* When RETRO_GO is defined, use the bitmask values from rg_input.h (rg_key_t enum).
+   These local defines are only for standalone ESP-IDF builds (non-retro-go). */
+#ifndef RETRO_GO
 #define RG_KEY_UP       0x0004
 #define RG_KEY_DOWN     0x0008
 #define RG_KEY_LEFT     0x0001
@@ -53,6 +56,7 @@ extern int InputMode;
 #define RG_KEY_Y        0x0800
 #define RG_KEY_A        0x0010
 #define RG_KEY_B        0x0020
+#endif
 #define KEYCODE_UP        0x67
 #define KEYCODE_DOWN      0x6c
 #define KEYCODE_LEFT      0x69

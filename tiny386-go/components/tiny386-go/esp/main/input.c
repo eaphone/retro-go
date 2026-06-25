@@ -446,11 +446,6 @@ void input_init(void)
     };
     gpio_config(&io_conf);
     ESP_LOGI(TAG, "GPIO button pins configured (10 buttons)");
-#endif
-
-    ESP_LOGI(TAG, "Initializing input");
-    prev_joystick = 0;
-    arrow_held_key = 0;
     
 #ifdef RG_BATTERY_KEY
     ip5306_key_init();
@@ -459,6 +454,11 @@ void input_init(void)
     ip5306_short_press();
     xTaskCreatePinnedToCore(&keep_ip5306_alive_task, "keep_alive_task", 4096, NULL, 0, NULL, 0);
 #endif
+#endif
+
+    ESP_LOGI(TAG, "Initializing input");
+    prev_joystick = 0;
+    arrow_held_key = 0;
 }
 
 /* Screenshot (BMP format) */

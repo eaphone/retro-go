@@ -184,23 +184,6 @@ void input_process(void)
     int64_t now = rg_system_timer();
     joystick = rg_input_read_gamepad();
 
-    /* Check for Menu/Option buttons to open retro-go's own menus */
-    if (joystick == RG_KEY_MENU)
-    {
-        emu_paused=true;
-        rg_gui_game_menu();
-        emu_paused=false;
-        prev_joystick = joystick;
-        return;
-    }
-    if (joystick == RG_KEY_OPTION)
-    {
-        emu_paused=true;
-        rg_gui_options_menu();
-        emu_paused=false;
-        prev_joystick = joystick;
-        return;
-    }
 #else
     TickType_t now = xTaskGetTickCount();
     for (int i = 0; i < 10; i++) {
@@ -215,6 +198,28 @@ void input_process(void)
     /* Detect pressed/released edges */
     uint32_t pressed = joystick & ~prev_joystick;
     uint32_t released = prev_joystick & ~joystick;
+
+#ifdef RETRO_GO
+    /* Check for Menu/Option buttons to open retro-go's own menus.
+       Use edge-triggered detection (pressed) instead of exact match (==)
+       to reliably catch the button even if other inputs are active. */
+    if (pressed & RG_KEY_MENU)
+    {
+        emu_paused = true;
+        rg_gui_game_menu();
+        emu_paused = false;
+        prev_joystick = joystick;
+        return;
+    }
+    if (pressed & RG_KEY_OPTION)
+    {
+        emu_paused = true;
+        rg_gui_options_menu();
+        emu_paused = false;
+        prev_joystick = joystick;
+        return;
+    }
+#endif
 
     /* Modifier keys */
     int select_pressed = (joystick & RG_KEY_SELECT) != 0;

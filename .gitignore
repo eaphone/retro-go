@@ -12,7 +12,7 @@ build/
 /*.fw
 /*.img
 /*.zip
-sdkconfig
+*.bin
 
 # SDL2 build
 /sd
@@ -22,3 +22,15 @@ sdkconfig
 /*.exe
 managed_components
 *.lock
+build-p4
+build-s3
+gwenesis/sdkconfig
+prboom-go/sdkconfig
+retro-core/sdkconfig
+snes9x/sdkconfig
+fmsx/sdkconfig
+gbsp/sdkconfig
+tiny386-go/sdkconfig
+video-player/sdkconfig
+launcher/sdkconfig
+.depends

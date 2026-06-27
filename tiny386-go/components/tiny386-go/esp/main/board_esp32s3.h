@@ -43,6 +43,7 @@
 #define I2S_WS   GPIO_NUM_3
 #define I2S_DOUT GPIO_NUM_18
 #define MIXER_BUF_LEN 256
+#define PC_STEP_COUNT 512
 
 #define GPIO_KEY_UP       GPIO_NUM_11
 #define GPIO_KEY_DOWN     GPIO_NUM_12

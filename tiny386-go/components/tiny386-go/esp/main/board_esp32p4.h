@@ -47,6 +47,7 @@
 // BCK=GPIO8, WS=GPIO3, DATA=GPIO18, MCLK unused
 // Kept at 256: 512 caused bursty audio submission starving pc_step.
 #define MIXER_BUF_LEN 256
+#define PC_STEP_COUNT 2048
 #define I2S_MCLK GPIO_NUM_NC
 #define I2S_BCLK GPIO_NUM_4
 #define I2S_WS   GPIO_NUM_2

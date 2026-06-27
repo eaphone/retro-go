@@ -102,14 +102,6 @@ static void cpu_enable_fpu(CPUABS *cpu)
 #endif
 
 #ifdef BUILD_ESP32
-#ifndef MIXER_BUF_LEN
-#define MIXER_BUF_LEN 128
-#endif
-#ifdef esp32p4
-#define PC_STEP_COUNT 2048
-#else
-#define PC_STEP_COUNT 512
-#endif
 void pcmalloc_init(void *ptr, long len);
 #else
 #define MIXER_BUF_LEN 2048
@@ -876,6 +868,23 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 	return pc;
 }
 
+/* Soft-clip: quadratic knee for values exceeding 16-bit range.
+ * Cheap (1 mul, 1 shift) and only activates on overshoot. */
+static inline int16_t soft_clip(int32_t x)
+{
+	if (x > 32767) {
+		int32_t over = x - 32767;
+		if (over > 32767) return 32767;
+		return (int16_t)(32767 - (over * over / 65536));
+	}
+	if (x < -32768) {
+		int32_t over = -32768 - x;
+		if (over > 32768) return -32768;
+		return (int16_t)(-32768 + (over * over / 65536));
+	}
+	return (int16_t)x;
+}
+
 void mixer_callback (void *opaque, uint8_t *stream, int free)
 {
 	uint8_t tmpbuf[MIXER_BUF_LEN];
@@ -888,21 +897,15 @@ void mixer_callback (void *opaque, uint8_t *stream, int free)
 	int16_t *d2 = (int16_t *) stream;
 	int16_t *d1 = (int16_t *) tmpbuf;
 	for (int i = 0; i < free / 2; i++) {
-		int res = d2[i] + d1[i / 2];
-		if (res > 32767) res = 32767;
-		if (res < -32768) res = -32768;
-		d2[i] = res;
+		d2[i] = soft_clip((int32_t)d2[i] + (int32_t)d1[i / 2]);
 	}
 
 	if (pcspk_get_active_out(pc->pcspk)) {
 		memset(tmpbuf, 0x80, MIXER_BUF_LEN / 2);
 		pcspk_callback(pc->pcspk, tmpbuf, free / 4); // u8, mono
 		for (int i = 0; i < free / 2; i++) {
-			int res = d2[i];
-			res += ((int) tmpbuf[i / 2] - 0x80) << 5;
-			if (res > 32767) res = 32767;
-			if (res < -32768) res = -32768;
-			d2[i] = res;
+			int32_t res = (int32_t)d2[i] + (((int32_t)tmpbuf[i / 2] - 0x80) << 5);
+			d2[i] = soft_clip(res);
 		}
 	}
 }

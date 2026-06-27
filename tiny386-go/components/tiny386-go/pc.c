@@ -105,10 +105,7 @@ static void cpu_enable_fpu(CPUABS *cpu)
 #ifndef MIXER_BUF_LEN
 #define MIXER_BUF_LEN 128
 #endif
-// Increased from 512: fewer pc_step() calls = less loop overhead.
-// VGA task runs on separate core, so display timing is unaffected.
-// Desktop uses 10240; 8192 is safe for ESP32-P4 with 360MHz+.
-#define PC_STEP_COUNT 8192
+#define PC_STEP_COUNT 512
 void pcmalloc_init(void *ptr, long len);
 #else
 #define MIXER_BUF_LEN 2048
@@ -116,7 +113,7 @@ void pcmalloc_init(void *ptr, long len);
 #define pcmalloc_init(ptr, len)
 #endif
 
-#ifndef esp32s3
+#ifdef esp32p4
 // Stub NE2000 for non-esp32s3 targets (ne2000.c body is empty without esp32s3).
 uint32_t ne2000_ioport_read(void *opaque, uint32_t addr) {
 	(void)opaque; (void)addr;
@@ -604,7 +601,6 @@ void pc_step(PC *pc)
 	ne2000_step(pc->ne2000);
 	i8257_dma_run(pc->isa_dma);
 	i8257_dma_run(pc->isa_hdma);
-
 	cpu_step(pc->cpu, PC_STEP_COUNT);
 }
 
@@ -773,13 +769,13 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 				ret = ide_attach_cd(pc->ide, i, disks[i]);
 			else
 				ret = ide_attach(pc->ide, i, disks[i]);
-			if (ret != 0) printf("IDE0 disk %d: Failed to attach '%s'\n", i, disks[i]);
+			assert(ret == 0);
 		} else {
 			if (conf->iscd[i])
 				ret = ide_attach_cd(pc->ide2, i - 2, disks[i]);
 			else
 				ret = ide_attach(pc->ide2, i - 2, disks[i]);
-			if (ret != 0) printf("IDE1 disk %d: Failed to attach '%s'\n", i - 2, disks[i]);
+			assert(ret == 0);
 		}
 	}
 
@@ -821,9 +817,7 @@ PC *pc_new(SimpleFBDrawFunc *redraw, void *redraw_data,
 			continue;
 		int ret;
 		ret = emulink_attach_floppy(pc->emulink, i, fdd[i]);
-		if (ret != 0) {
-			printf("Floppy %d: Failed to attach '%s' (err=%d)\n", i, fdd[i], ret);
-		}
+		assert(ret == 0);
 	}
 
 	cb->iomem = pc;
@@ -863,9 +857,7 @@ void mixer_callback (void *opaque, uint8_t *stream, int free)
 	PC *pc = opaque;
 	assert(free / 2 <= MIXER_BUF_LEN);
 	memset(tmpbuf, 0, MIXER_BUF_LEN);
-
 	adlib_callback(pc->adlib, tmpbuf, free / 2); // s16, mono
-
 	sb16_audio_callback(pc->sb16, stream, free); // s16, stereo
 
 	int16_t *d2 = (int16_t *) stream;

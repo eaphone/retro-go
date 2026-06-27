@@ -6,8 +6,15 @@
 #include <string.h>
 
 #ifdef BUILD_ESP32
+#ifdef esp32p4
+#define IRAM_ATTR
+#define IRAM_ATTR_CPU_EXEC1
+#define DRAM_ATTR
+#define noinline __attribute__((noinline))
+#else
 #include "esp_attr.h"
 #define noinline __attribute__((noinline))
+#endif
 #else
 #define IRAM_ATTR
 #define IRAM_ATTR_CPU_EXEC1

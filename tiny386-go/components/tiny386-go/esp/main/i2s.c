@@ -70,10 +70,8 @@ void audio_submit_frame(void)
 
         /* Fill buffer with mixed audio (Adlib + SB16 + PC speaker) */
         memset(audio_buf, 0, sizeof(audio_buf));
-        int64_t _a1 = rg_system_timer();
 
         mixer_callback(globals.pc, (uint8_t *)audio_buf, MIXER_BUF_LEN * 2);
-        int64_t _a2 = rg_system_timer();
 
         /* Apply volume */
         int vol = s_volume;
@@ -85,32 +83,9 @@ void audio_submit_frame(void)
                 audio_buf[i] = (int16_t)sample;
             }
         }
-        int64_t _a3 = rg_system_timer();
 
         /* Submit to retro-go audio system */
         rg_audio_submit((void *)audio_buf, MIXER_BUF_LEN);
-        int64_t _a4 = rg_system_timer();
-
-        #ifdef ESPPROFILE
-        /* Profile: mix vs vol vs submit */
-        {
-            static int64_t t_mix = 0, t_vol = 0, t_sub = 0;
-            static int asub = 0, acnt = 0;
-            t_mix += (_a2 - _a1);
-            t_vol += (_a3 - _a2);
-            t_sub += (_a4 - _a3);
-            asub++; acnt++;
-            if (acnt >= 128) {
-                fprintf(stderr, "AUDIO: mix=%lu vol=%lu submit=%lu us (avg %d subs)\n",
-                    (unsigned long)(t_mix / asub),
-                    (unsigned long)(t_vol / asub),
-                    (unsigned long)(t_sub / asub),
-                    asub);
-                t_mix = 0; t_vol = 0; t_sub = 0;
-                asub = 0; acnt = 0;
-            }
-        }
-        #endif
     }
 
     /* If we fell too far behind (emulator stall), reset the clock

@@ -305,7 +305,7 @@ static int pc_main(const char *file, const char *rom_path)
 		t_total += t3 - t0;
 		profile_count++;
 		if (profile_count >= 256) {
-			fprintf(stderr, "PROFILE: total=%lu input=%lu audio=%lu pc=%lu us (avg %d loops)\n",
+			printf("PROFILE: total=%lu input=%lu audio=%lu pc=%lu us (avg %d loops)\n",
 				(unsigned long)(t_total / profile_count),
 				(unsigned long)(t_input / profile_count),
 				(unsigned long)(t_audio / profile_count),

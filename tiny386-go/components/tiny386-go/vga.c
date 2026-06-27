@@ -38,7 +38,9 @@ extern int scroll_active;
 #ifdef BUILD_ESP32
 #include "esp_attr.h"
 void *pcmalloc(long size);
+#ifndef RETRACE_INTERVAL_US
 #define RETRACE_INTERVAL_US 5000
+#endif
 #else
 #define IRAM_ATTR
 #define pcmalloc malloc

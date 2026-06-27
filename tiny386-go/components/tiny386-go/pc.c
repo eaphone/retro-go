@@ -105,7 +105,11 @@ static void cpu_enable_fpu(CPUABS *cpu)
 #ifndef MIXER_BUF_LEN
 #define MIXER_BUF_LEN 128
 #endif
+#ifdef esp32p4
+#define PC_STEP_COUNT 2048
+#else
 #define PC_STEP_COUNT 512
+#endif
 void pcmalloc_init(void *ptr, long len);
 #else
 #define MIXER_BUF_LEN 2048
@@ -593,6 +597,9 @@ void pc_step(PC *pc)
 		load_bios_and_reset(pc);
 	}
 
+	static int profile_count_pc = 0;
+	static int64_t t_periph = 0, t_cpu = 0;
+	int64_t t0_pc = get_uticks();
 	i8254_update_irq(pc->pit);
 	cmos_update_irq(pc->cmos);
 	if (pc->enable_serial)
@@ -601,7 +608,25 @@ void pc_step(PC *pc)
 	ne2000_step(pc->ne2000);
 	i8257_dma_run(pc->isa_dma);
 	i8257_dma_run(pc->isa_hdma);
+
+	int64_t t1_pc = get_uticks();
+
 	cpu_step(pc->cpu, PC_STEP_COUNT);
+
+#ifdef ESPPROFILE
+	int64_t t2_pc = get_uticks();
+	t_periph += t1_pc - t0_pc;
+	t_cpu   += t2_pc - t1_pc;
+	profile_count_pc++;
+	if (profile_count_pc >= 512) {
+		fprintf(stderr, "PC_PROF: periph=%lu cpu=%lu us (avg %d iters)\n",
+			(unsigned long)(t_periph / profile_count_pc),
+			(unsigned long)(t_cpu / profile_count_pc),
+			profile_count_pc);
+		t_periph = t_cpu = 0;
+		profile_count_pc = 0;
+	}
+#endif
 }
 
 static int read_irq(void *o)

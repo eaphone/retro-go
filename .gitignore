@@ -34,3 +34,4 @@ tiny386-go/sdkconfig
 video-player/sdkconfig
 launcher/sdkconfig
 .depends
+tiny386-go/components/tiny386-go/esp/sdkconfig

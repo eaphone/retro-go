@@ -177,18 +177,18 @@ void gba_save_state(void* dst)
   wrptr += input_write_savestate(wrptr);
   wrptr += main_write_savestate(wrptr);
   wrptr += memory_write_savestate(wrptr);
-  //wrptr += sound_write_savestate(wrptr);
+  wrptr += sound_write_savestate(wrptr);
   
-  // The padding space is pushed into a padding field for easy parsing
-  //{
-  //  unsigned padsize = GBA_STATE_MEM_SIZE - (wrptr - stptr);
-  //  padsize -= 1 + 9 + 4 + 1 + 1;
-  //  *wrptr++ = 0x05;    // Byte array
-  //  bson_write_cstring(wrptr, "zpadding");
-  //  bson_write_u32(wrptr, padsize);
-  //  *wrptr++ = 0;
-  //  wrptr += padsize;
-  //}
+   //The padding space is pushed into a padding field for easy parsing
+  {
+    unsigned padsize = GBA_STATE_MEM_SIZE - (wrptr - stptr);
+    padsize -= 1 + 9 + 4 + 1 + 1;
+    *wrptr++ = 0x05;    // Byte array
+    bson_write_cstring(wrptr, "zpadding");
+    bson_write_u32(wrptr, padsize);
+    *wrptr++ = 0;
+    wrptr += padsize;
+  }
 
   *wrptr++ = 0;
   

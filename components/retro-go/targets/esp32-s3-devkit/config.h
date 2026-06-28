@@ -8,7 +8,7 @@
  * Status LED                                                               *
  ****************************************************************************/
 #define RG_LED_DRIVER               1   // 1 = GPIO
-#define RG_GPIO_LED                 GPIO_NUM_38
+#define RG_GPIO_LED                 GPIO_NUM_NC
 // #define RG_GPIO_LED_INVERT          // Uncomment if the LED is active LOW
 
 
@@ -62,7 +62,7 @@
 
 #define RG_SCREEN_DRIVER            0   // 0 = ILI9341/ST7789
 #define RG_SCREEN_HOST              SPI2_HOST
-#define RG_SCREEN_SPEED             SPI_MASTER_FREQ_40M // SPI_MASTER_FREQ_80M
+#define RG_SCREEN_SPEED             SPI_MASTER_FREQ_80M // SPI_MASTER_FREQ_80M
 #define RG_SCREEN_BACKLIGHT         1
 #define RG_SCREEN_WIDTH             320
 #define RG_SCREEN_HEIGHT            240
@@ -118,9 +118,9 @@
 /****************************************************************************
  * Net                                                                      *
  ****************************************************************************/
-#define RG_NET_SCK                  1
-#define RG_NET_CS                   17
-#define RG_NET_MOSI                 9
-#define RG_NET_MISO                 10
+#define RG_NET_SCK                  GPIO_NUM_1
+#define RG_NET_CS                   GPIO_NUM_17
+#define RG_NET_MOSI                 GPIO_NUM_9
+#define RG_NET_MISO                 GPIO_NUM_10
 #define RG_NET_HS                   GPIO_NUM_44
 #define FRAME_BUFFER_SIZE           1024

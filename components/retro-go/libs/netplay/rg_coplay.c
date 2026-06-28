@@ -4,6 +4,7 @@
 #include <driver/spi_slave.h>
 #include <driver/gpio.h>
 
+#ifdef RG_NET_SPI_HOST
 #define CHUNK_SIZE 4092
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -32,8 +33,8 @@ void rg_coplay_host_spi_init(void) {
         .flags = SPI_DEVICE_HALFDUPLEX,
     };
     
-    spi_bus_initialize(SPI3_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
-    spi_bus_add_device(SPI3_HOST, &dev_cfg, &spi_handle);
+    spi_bus_initialize(RG_NET_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+    spi_bus_add_device(RG_NET_SPI_HOST, &dev_cfg, &spi_handle);
     
     // 初始化握手信号 GPIO
     gpio_config_t io_conf = {
@@ -84,7 +85,7 @@ void rg_coplay_slave_spi_init(void) {
         .flags = 0,
     };
     
-    spi_slave_initialize(SPI3_HOST, &bus_cfg, &slave_cfg, SPI_DMA_CH_AUTO);
+    spi_slave_initialize(RG_NET_SPI_HOST, &bus_cfg, &slave_cfg, SPI_DMA_CH_AUTO);
     
     // 初始化握手信号 GPIO（作为输出，通知主机已就绪）
     gpio_config_t io_conf = {
@@ -107,7 +108,7 @@ void rg_coplay_receive_frame(uint16_t *frame_buffer) {
     // 降低握手信号表示正在接收
     gpio_set_level(RG_NET_HS, 0);
     
-    spi_slave_transmit(SPI3_HOST, &trans, portMAX_DELAY);
+    spi_slave_transmit(RG_NET_SPI_HOST, &trans, portMAX_DELAY);
     
     // 接收完成，恢复就绪状态
     gpio_set_level(RG_NET_HS, 1);
@@ -116,5 +117,6 @@ void rg_coplay_receive_frame(uint16_t *frame_buffer) {
     }
     
     // 将接收到的画面显示到屏幕
-    //rg_display_write_rect(0,0,RG_SCREEN_WIDTH,RG_SCREEN_HEIGHT,0, dst, 0);
+    rg_display_write_rect(0,0,RG_SCREEN_WIDTH,RG_SCREEN_HEIGHT,0, dst, 0);
 }
+#endif

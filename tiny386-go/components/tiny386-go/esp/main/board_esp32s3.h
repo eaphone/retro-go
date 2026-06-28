@@ -1,7 +1,7 @@
 #define BUILD_ESP32
 #define esp32s3
-#define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
 
+#define IRAM_ATTR_CPU_EXEC1 IRAM_ATTR
 #define ESPDEBUG
 #define BPP 16
 #define FULL_UPDATE
@@ -24,12 +24,12 @@
 #define PSRAM_ALLOC_LEN (int)(6.5 * 1024 * 1024)
 
 // SD card: SPI mode via SPI3_HOST
-#define SD_SPI_HOST SPI3_HOST
-#define SD_SPI_MISO  GPIO_NUM_45
-#define SD_SPI_MOSI  GPIO_NUM_39
-#define SD_SPI_SCK   GPIO_NUM_38
-#define SD_SPI_CS    GPIO_NUM_40
-#define SD_SPI_FREQ_KHZ 20000
+#define SD_SPI_HOST     SPI3_HOST
+#define SD_SPI_MISO     GPIO_NUM_45
+#define SD_SPI_MOSI     GPIO_NUM_39
+#define SD_SPI_SCK      GPIO_NUM_38
+#define SD_SPI_CS       GPIO_NUM_40
+#define SD_SPI_FREQ_KHZ SDMMC_FREQ_DEFAULT
 
 // I2C for backlight (CH422G I/O expander)
 #define LCD_I2C_SDA  GPIO_NUM_15

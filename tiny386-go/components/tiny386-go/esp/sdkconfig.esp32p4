@@ -1662,7 +1662,7 @@ CONFIG_LOG_MODE_TEXT_EN=y
 CONFIG_LOG_MODE_TEXT=y
 # end of Settings
 
-CONFIG_LOG_IN_IRAM=y
+# CONFIG_LOG_IN_IRAM is not set
 # end of Log
 
 #

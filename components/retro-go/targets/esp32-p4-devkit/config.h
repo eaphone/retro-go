@@ -157,6 +157,7 @@
 /****************************************************************************
  * Net                                                                      *
  ****************************************************************************/
+#define RG_NET_SPI_HOST           SPI3_HOST
 #define RG_NET_SCK                  GPIO_NUM_38
 #define RG_NET_CS                   GPIO_NUM_37
 #define RG_NET_MOSI                 GPIO_NUM_25

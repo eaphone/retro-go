@@ -8,9 +8,6 @@
 #ifdef BUILD_ESP32
 #include "esp_attr.h"
 #define noinline __attribute__((noinline))
-#ifdef esp32p4
-#define IRAM_ATTR_CPU_EXEC1
-#endif
 #else
 #define IRAM_ATTR
 #define IRAM_ATTR_CPU_EXEC1
@@ -2274,7 +2271,7 @@ noinline void IRAM_ATTR try_jcc8(CPUI386 *cpu)
 		THROW0(EX_OF); \
 	}
 
-static bool IRAM_ATTR call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
+static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 
 #define INT(i, li, _) \
 	/*dolog("int %02x %08x %04x:%08x\n", li(i), REGi[0], SEGi(SEG_CS), cpu->ip);*/ \

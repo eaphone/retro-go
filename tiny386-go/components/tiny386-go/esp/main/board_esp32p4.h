@@ -5,6 +5,7 @@
  * Hot helpers (try_jcc8, store8/16/32) already have IRAM_ATTR but
  * are disabled by TINY386_NO_IRAM.  Can selectively enable smaller
  * functions if profiling shows they're worth the IRAM cost. */
+#define IRAM_ATTR_CPU_EXEC1
 #define ESPDEBUG
 //#define ESPPROFILE
 #define BPP 16

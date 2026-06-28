@@ -38,6 +38,9 @@
 #define SDMMC_CLK        GPIO_NUM_7
 #define SDMMC_CMD        GPIO_NUM_8
 #define SDMMC_D0         GPIO_NUM_6
+#define SDMMC_D1	     GPIO_NUM_5
+#define SDMMC_D2	     GPIO_NUM_10
+#define SDMMC_D3	     GPIO_NUM_9
 #define SDMMC_FREQ_KHZ   SDMMC_FREQ_HIGHSPEED
 
 // I2C for backlight (CH422G I/O expander)

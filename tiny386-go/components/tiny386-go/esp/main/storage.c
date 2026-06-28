@@ -137,12 +137,14 @@ void storage_init(void)
 
     // 2. Configure SDMMC slot with GPIO matrix pins
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-    slot_config.width = 1;  // 1-bit mode
+    slot_config.width = 4;  // 1-bit mode
     slot_config.clk = SDMMC_CLK;
     slot_config.cmd = SDMMC_CMD;
     slot_config.d0  = SDMMC_D0;
     // d1-d3 not used in 1-bit mode, set to -1
-    slot_config.d1 = slot_config.d2 = slot_config.d3 = GPIO_NUM_NC;
+    slot_config.d1 = SDMMC_D1;
+    slot_config.d2 = SDMMC_D2;
+    slot_config.d3 = SDMMC_D3;
 
     // 3. FAT mount config
     esp_vfs_fat_mount_config_t mount_config = {

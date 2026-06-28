@@ -4,7 +4,7 @@
 #include <driver/spi_slave.h>
 #include <driver/gpio.h>
 
-#ifdef RG_NET_SPI_HOST
+#if defined(RG_ENABLE_NETPLAY) && defined(RG_NET_SPI_HOST)
 #define CHUNK_SIZE 4092
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

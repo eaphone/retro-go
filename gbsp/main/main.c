@@ -92,9 +92,11 @@ int16_t input_cb(unsigned port, unsigned device, unsigned index, unsigned id)
     if (joystick & RG_KEY_LEFT) val |= (1 << RETRO_DEVICE_ID_JOYPAD_LEFT);
     if (joystick & RG_KEY_RIGHT) val |= (1 << RETRO_DEVICE_ID_JOYPAD_RIGHT);
     if (joystick & RG_KEY_START) val |= (1 << RETRO_DEVICE_ID_JOYPAD_START);
-    if (joystick & RG_KEY_SELECT) val |= (1 << RETRO_DEVICE_ID_JOYPAD_SELECT);
+    if (joystick & RG_KEY_SELECT && joystick & RG_KEY_START) val |= (1 << RETRO_DEVICE_ID_JOYPAD_SELECT);
     if (joystick & RG_KEY_B) val |= (1 << RETRO_DEVICE_ID_JOYPAD_B);
     if (joystick & RG_KEY_A) val |= (1 << RETRO_DEVICE_ID_JOYPAD_A);
+    if (joystick & RG_KEY_MENU) val |= (1 << RETRO_DEVICE_ID_JOYPAD_L);
+    if (joystick & RG_KEY_OPTION) val |= (1 << RETRO_DEVICE_ID_JOYPAD_R);
     return val;
 }
 
@@ -192,14 +194,16 @@ void app_main(void)
         const int64_t startTime = rg_system_timer();
         uint32_t joystick = rg_input_read_gamepad();
 
-        if (joystick & (RG_KEY_MENU | RG_KEY_OPTION))
-        {
-            if (joystick & RG_KEY_MENU)
-                rg_gui_game_menu();
-            else
-                rg_gui_options_menu();
-            memset(&mixbuffer, 0, sizeof(mixbuffer));
-            continue;
+        if (joystick & RG_KEY_SELECT){
+            if (joystick & (RG_KEY_MENU | RG_KEY_OPTION))
+            {
+                if (joystick & RG_KEY_MENU)
+                    rg_gui_game_menu();
+                else
+                    rg_gui_options_menu();
+                memset(&mixbuffer, 0, sizeof(mixbuffer));
+                continue;
+            }
         }
 
         update_input();

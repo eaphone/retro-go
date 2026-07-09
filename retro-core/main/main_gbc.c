@@ -332,6 +332,14 @@ void gbc_main(void)
         uint32_t joystick = rg_input_read_gamepad();
         bool drawFrame = !skipFrames;
 
+    #ifdef COPLAY_ENABLED
+        // If coplay is active, send frame to client and get P2 input
+        if (coplay_active) {
+            rg_coplay_send_frame((uint16_t *)currentUpdate->data,
+                currentUpdate->width, currentUpdate->height, &coplay_p2_input);
+        }
+    #endif
+
         if (joystick & (RG_KEY_MENU|RG_KEY_OPTION))
         {
             if (joystick & RG_KEY_MENU)
@@ -342,6 +350,12 @@ void gbc_main(void)
             }
             else
                 rg_gui_options_menu();
+        #ifdef COPLAY_ENABLED
+            if (rg_coplay_is_client_connected()) {
+                coplay_active = true;
+                RG_LOGI("gbc: CoPlay host mode activated");
+            }
+        #endif
             continue;
         }
 
@@ -359,6 +373,24 @@ void gbc_main(void)
             gnuboy_set_pad(pad); // That call is somewhat costly, that's why we try to avoid it
             joystick_old = joystick;
         }
+
+    #ifdef COPLAY_ENABLED
+        // Merge coplay P2 input with P1 (for single-system 2P games)
+        // GB only has one hardware pad, so P2 input is OR'd with P1
+        if (coplay_active && coplay_p2_input) {
+            int pad_merged = 0;
+            if ((joystick | coplay_p2_input) & RG_KEY_UP)     pad_merged |= GB_PAD_UP;
+            if ((joystick | coplay_p2_input) & RG_KEY_RIGHT)  pad_merged |= GB_PAD_RIGHT;
+            if ((joystick | coplay_p2_input) & RG_KEY_DOWN)   pad_merged |= GB_PAD_DOWN;
+            if ((joystick | coplay_p2_input) & RG_KEY_LEFT)   pad_merged |= GB_PAD_LEFT;
+            if ((joystick | coplay_p2_input) & RG_KEY_SELECT) pad_merged |= GB_PAD_SELECT;
+            if ((joystick | coplay_p2_input) & RG_KEY_START)  pad_merged |= GB_PAD_START;
+            if ((joystick | coplay_p2_input) & RG_KEY_A)      pad_merged |= GB_PAD_A;
+            if ((joystick | coplay_p2_input) & RG_KEY_B)      pad_merged |= GB_PAD_B;
+            gnuboy_set_pad(pad_merged);
+            joystick_old = joystick; // prevent overwriting with just P1
+        }
+    #endif
 
         video_time = audio_time = 0;
 

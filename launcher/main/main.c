@@ -1,4 +1,5 @@
 #include <rg_system.h>
+#include <rg_coplay.h>
 #include <sys/time.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -166,6 +167,18 @@ static rg_gui_event_t updater_cb(rg_gui_option_t *option, rg_gui_event_t event)
     }
     return RG_DIALOG_VOID;
 }
+
+#ifdef COPLAY_ENABLED
+static rg_gui_event_t coplay_client_cb(rg_gui_option_t *option, rg_gui_event_t event)
+{
+    if (event == RG_DIALOG_ENTER)
+    {
+        rg_coplay_client_run();
+        return RG_DIALOG_REDRAW;
+    }
+    return RG_DIALOG_VOID;
+}
+#endif
 
 static rg_gui_event_t prebuild_cache_cb(rg_gui_option_t *option, rg_gui_event_t event)
 {
@@ -455,6 +468,9 @@ static void about_handler(rg_gui_option_t *dest)
 {
     *dest++ = (rg_gui_option_t){0, _("Build CRC cache"), NULL, RG_DIALOG_FLAG_NORMAL, &prebuild_cache_cb};
     *dest++ = (rg_gui_option_t){0, _("Update Retro-Go"), NULL, RG_DIALOG_FLAG_NORMAL, &updater_cb};
+    #ifdef COPLAY_ENABLED
+    *dest++ = (rg_gui_option_t){0, _("CoPlay Client"), NULL, RG_DIALOG_FLAG_NORMAL, &coplay_client_cb};
+    #endif
     *dest++ = (rg_gui_option_t)RG_DIALOG_END;
 }
 

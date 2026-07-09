@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <rg_system.h>
+#include <rg_coplay.h>
 
 #define AUDIO_SAMPLE_RATE   (32000)
 #define AUDIO_BUFFER_LENGTH (AUDIO_SAMPLE_RATE / 50 + 1)
@@ -17,3 +18,9 @@ void sms_main();
 void gw_main();
 void lynx_main();
 void snes_main();
+
+// CoPlay shared state for retro-core emulators
+#ifdef COPLAY_ENABLED
+extern bool coplay_active;
+extern uint16_t coplay_p2_input;
+#endif

@@ -157,11 +157,32 @@
 /****************************************************************************
  * Net                                                                      *
  ****************************************************************************/
-#define RG_NET_SPI_HOST           SPI3_HOST
+// SPI host for coplay (NOT SPI2 which is used by LCD)
+// IMPORTANT: GPIO24/25 are USB Serial/JTAG D-/D+, cannot be used for SPI
+#define RG_NET_SPI_HOST           SPI3_HOST         // GPSPI1 on P4. LCD uses SPI2.
 #define RG_NET_SCK                  GPIO_NUM_38
 #define RG_NET_CS                   GPIO_NUM_37
 #define RG_NET_MOSI                 GPIO_NUM_25
 #define RG_NET_MISO                 GPIO_NUM_24
 #define RG_NET_HS                   GPIO_NUM_17
-#define FRAME_BUFFER_SIZE           1024
+#define FRAME_BUFFER_SIZE           (320 * 240 * 2) // 153600 bytes for 320x240 RGB565 frame
+#define COPLAY_ENABLED              1
 // See components/retro-go/config.h for more things you can define here!
+
+/****************************************************************************
+ * CoPlay SPI Net Setting (for coplay peer-to-peer)                          *
+ ****************************************************************************/
+// These pins must NOT conflict with LCD (SPI2) or SDMMC
+// MOSI=MISO for the coplay connection need to be wired between the two devices
+// Connection: Host-MOSI <-> Client-MOSI, Host-MISO <-> Client-MISO, Host-SCK <-> Client-SCK,
+//             Host-CS <-> Client-CS, Host-HS <-> Client-HS
+// IMPORTANT: The two devices share the same SPI lines. MOSI on host connects to MOSI on client,
+//            MISO to MISO, etc. (not crossover!)
+//
+// Wiring (5 wires + GND):
+//   Host GPIO24 (MOSI)  <-->  Client GPIO24 (MOSI) �?USB1P1_N0, needs USB console disabled
+//   Host GPIO25 (MISO)  <-->  Client GPIO25 (MISO) �?USB1P1_P0, needs USB console disabled
+//   Host GPIO38 (SCK)   <-->  Client GPIO38 (SCK)
+//   Host GPIO37 (CS)    <-->  Client GPIO37 (CS)
+//   Host GPIO17 (HS)    <-->  Client GPIO17 (HS)
+//   Host GND            <-->  Client GND

@@ -276,12 +276,26 @@ void nes_main(void)
         uint32_t joystick = rg_input_read_gamepad();
         bool drawFrame = !skipFrames && !nsfPlayer;
 
+    #ifdef COPLAY_ENABLED
+        // If coplay is active, send frame to client and get P2 input
+        if (coplay_active) {
+            rg_coplay_send_frame((uint16_t *)currentUpdate->data,
+                currentUpdate->width, currentUpdate->height, &coplay_p2_input);
+        }
+    #endif
+
         if (joystick & (RG_KEY_MENU|RG_KEY_OPTION))
         {
             if (joystick & RG_KEY_MENU)
                 rg_gui_game_menu();
             else
                 rg_gui_options_menu();
+        #ifdef COPLAY_ENABLED
+            if (rg_coplay_is_client_connected()) {
+                coplay_active = true;
+                RG_LOGI("nes: CoPlay host mode activated");
+            }
+        #endif
             continue;
         }
 
@@ -295,6 +309,22 @@ void nes_main(void)
         if (joystick & RG_KEY_A)      buttons |= NES_PAD_A;
         if (joystick & RG_KEY_B)      buttons |= NES_PAD_B;
         input_update(0, buttons);
+
+    #ifdef COPLAY_ENABLED
+        // Map P2 input for NES (player 2)
+        if (coplay_active && coplay_p2_input) {
+            int buttons2 = 0;
+            if (coplay_p2_input & RG_KEY_START)  buttons2 |= NES_PAD_START;
+            if (coplay_p2_input & RG_KEY_SELECT) buttons2 |= NES_PAD_SELECT;
+            if (coplay_p2_input & RG_KEY_UP)     buttons2 |= NES_PAD_UP;
+            if (coplay_p2_input & RG_KEY_RIGHT)  buttons2 |= NES_PAD_RIGHT;
+            if (coplay_p2_input & RG_KEY_DOWN)   buttons2 |= NES_PAD_DOWN;
+            if (coplay_p2_input & RG_KEY_LEFT)   buttons2 |= NES_PAD_LEFT;
+            if (coplay_p2_input & RG_KEY_A)      buttons2 |= NES_PAD_A;
+            if (coplay_p2_input & RG_KEY_B)      buttons2 |= NES_PAD_B;
+            input_update(1, buttons2);
+        }
+    #endif
 
         if (drawFrame)
             currentUpdate = updates[currentUpdate == updates[0]];

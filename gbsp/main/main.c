@@ -1,5 +1,6 @@
 #include <rg_system.h>
 #include <rg_utils.h>
+#include <rg_coplay.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,6 +9,7 @@
 #include "../components/gbsp-libretro/sound.h"
 #include "../components/gbsp-libretro/gba_memory.h"
 #include "../components/gbsp-libretro/gba_cc_lut.h"
+#include "../components/gbsp-libretro/input.h"
 
 #define AUDIO_SAMPLE_RATE (GBA_SOUND_FREQUENCY)
 #define AUDIO_BUFFER_LENGTH (AUDIO_SAMPLE_RATE / 60 + 1)
@@ -19,6 +21,12 @@ boot_mode selected_boot_mode = boot_game;
 
 u32 skip_next_frame = 0;
 int sprite_limit = 1;
+
+// CoPlay multiplayer state
+#ifdef COPLAY_ENABLED
+static bool coplay_active = false;
+static uint16_t coplay_p2_input = 0;
+#endif
 
 gbsp_memory_t *gbsp_memory;
 
@@ -194,6 +202,14 @@ void app_main(void)
         const int64_t startTime = rg_system_timer();
         uint32_t joystick = rg_input_read_gamepad();
 
+    #ifdef COPLAY_ENABLED
+        // If coplay is active, send frame to client and get P2 input
+        if (coplay_active) {
+            rg_coplay_send_frame((uint16_t *)currentUpdate->data,
+                GBA_SCREEN_WIDTH, GBA_SCREEN_HEIGHT, &coplay_p2_input);
+        }
+    #endif
+
         if (joystick & RG_KEY_SELECT){
             if (joystick & (RG_KEY_MENU | RG_KEY_OPTION))
             {
@@ -202,11 +218,37 @@ void app_main(void)
                 else
                     rg_gui_options_menu();
                 memset(&mixbuffer, 0, sizeof(mixbuffer));
+            #ifdef COPLAY_ENABLED
+                // Check if coplay was activated from the menu
+                if (rg_coplay_is_client_connected()) {
+                    coplay_active = true;
+                    RG_LOGI("gbsp: CoPlay host mode activated");
+                }
+            #endif
                 continue;
             }
         }
 
         update_input();
+
+    #ifdef COPLAY_ENABLED
+        // Map coplay P2 input to GBA button bitmask
+        if (coplay_active && coplay_p2_input) {
+            u32 gba_p2 = 0;
+            if (coplay_p2_input & RG_KEY_A)      gba_p2 |= BUTTON_A;
+            if (coplay_p2_input & RG_KEY_B)      gba_p2 |= BUTTON_B;
+            if (coplay_p2_input & RG_KEY_SELECT) gba_p2 |= BUTTON_SELECT;
+            if (coplay_p2_input & RG_KEY_START)  gba_p2 |= BUTTON_START;
+            if (coplay_p2_input & RG_KEY_RIGHT)  gba_p2 |= BUTTON_RIGHT;
+            if (coplay_p2_input & RG_KEY_LEFT)   gba_p2 |= BUTTON_LEFT;
+            if (coplay_p2_input & RG_KEY_UP)     gba_p2 |= BUTTON_UP;
+            if (coplay_p2_input & RG_KEY_DOWN)   gba_p2 |= BUTTON_DOWN;
+            if (coplay_p2_input & RG_KEY_R)      gba_p2 |= BUTTON_R;
+            if (coplay_p2_input & RG_KEY_L)      gba_p2 |= BUTTON_L;
+            p2_gba_input = gba_p2;
+        }
+    #endif
+
         rumble_frame_reset();
         clear_gamepak_stickybits();
         execute_arm(execute_cycles);

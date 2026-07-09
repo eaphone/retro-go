@@ -187,6 +187,14 @@ void pce_main(void)
         // bool drawFrame = skipFrames == 0;
         drawFrame = skipFrames == 0;
 
+    #ifdef COPLAY_ENABLED
+        // If coplay is active, send frame to client and get P2 input
+        if (coplay_active) {
+            rg_coplay_send_frame((uint16_t *)currentUpdate->data,
+                currentUpdate->width, currentUpdate->height, &coplay_p2_input);
+        }
+    #endif
+
         if (joystick & (RG_KEY_MENU|RG_KEY_OPTION))
         {
             emulationPaused = true;
@@ -194,6 +202,12 @@ void pce_main(void)
                 rg_gui_game_menu();
             else
                 rg_gui_options_menu();
+        #ifdef COPLAY_ENABLED
+            if (rg_coplay_is_client_connected()) {
+                coplay_active = true;
+                RG_LOGI("pce: CoPlay host mode activated");
+            }
+        #endif
             emulationPaused = false;
             continue;
         }
@@ -208,6 +222,22 @@ void pce_main(void)
         if (joystick & RG_KEY_START)  buttons |= JOY_RUN;
         if (joystick & RG_KEY_SELECT) buttons |= JOY_SELECT;
         InputPCE(0, buttons);
+
+    #ifdef COPLAY_ENABLED
+        // Map P2 input from CoPlay client to player 2
+        if (coplay_active && coplay_p2_input) {
+            uint32_t buttons2 = 0;
+            if (coplay_p2_input & RG_KEY_LEFT)   buttons2 |= JOY_LEFT;
+            if (coplay_p2_input & RG_KEY_RIGHT)  buttons2 |= JOY_RIGHT;
+            if (coplay_p2_input & RG_KEY_UP)     buttons2 |= JOY_UP;
+            if (coplay_p2_input & RG_KEY_DOWN)   buttons2 |= JOY_DOWN;
+            if (coplay_p2_input & RG_KEY_A)      buttons2 |= JOY_A;
+            if (coplay_p2_input & RG_KEY_B)      buttons2 |= JOY_B;
+            if (coplay_p2_input & RG_KEY_START)  buttons2 |= JOY_RUN;
+            if (coplay_p2_input & RG_KEY_SELECT) buttons2 |= JOY_SELECT;
+            InputPCE(1, buttons2);
+        }
+    #endif
 
         RunPCE(drawFrame);
 

@@ -1,4 +1,5 @@
 #include "rg_system.h"
+#include "rg_coplay.h"
 #include "rg_gui.h"
 
 #include <cJSON.h>
@@ -437,7 +438,7 @@ rg_rect_t rg_gui_draw_text(int x_pos, int y_pos, int width, const char *text, //
     }
     else if (x_pos + width > gui.screen_width || y_pos + line_height > gui.screen_height)
     {
-        RG_LOGD("Textbox (pos: %dx%d, size: %dx%d) will be truncated!", x_pos, y_pos, width, line_height);
+        RG_LOGV("Textbox (pos: %dx%d, size: %dx%d) will be truncated!", x_pos, y_pos, width, line_height);
         // return;
     }
 
@@ -2340,8 +2341,11 @@ void rg_gui_game_menu(void)
         {2000, _("Save & Quit"),     NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         {3001, _("Load game"),       NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         {3000, _("Reset"),           NULL, RG_DIALOG_FLAG_NORMAL, NULL},
-        #ifdef RG_ENABLE_NETPLAY
+                #ifdef RG_ENABLE_NETPLAY
         {5000, _("Netplay"),         NULL, RG_DIALOG_FLAG_NORMAL, NULL},
+        #endif
+        #ifdef COPLAY_ENABLED
+        {5100, _("CoPlay Host"),     NULL, RG_DIALOG_FLAG_NORMAL, NULL},
         #endif
         {5500, _("Options"),         NULL, have_option_btn ? RG_DIALOG_FLAG_HIDDEN : RG_DIALOG_FLAG_NORMAL, NULL},
         {6000, _("About"),           NULL, RG_DIALOG_FLAG_NORMAL, NULL},
@@ -2373,6 +2377,9 @@ void rg_gui_game_menu(void)
         case 3003: rg_emu_reset(true); break;
     #ifdef RG_ENABLE_NETPLAY
         case 5000: rg_netplay_quick_start(); break;
+    #endif
+    #ifdef COPLAY_ENABLED
+        case 5100: rg_coplay_host_start(); break;
     #endif
         case 5500: rg_gui_options_menu(); break;
         case 6000: rg_gui_about_menu(); break;

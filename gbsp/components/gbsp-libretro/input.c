@@ -34,6 +34,9 @@ static retro_input_state_t input_state_cb;
 
 void retro_set_input_state(retro_input_state_t cb) { input_state_cb = cb; }
 
+// CoPlay P2 input (set by host emulator after receiving client input)
+u32 p2_gba_input = 0;
+
 extern void set_fastforward_override(bool fastforward);
 
 static void trigger_key(u32 key)
@@ -130,6 +133,13 @@ u32 update_input(void)
        // Emulate 4 keypad buttons pressed (which is impossible).
        new_key = (frame_counter % 3) ? 0x3FF : 0x30F;
      }
+   }
+
+   // Merge P2 input (from CoPlay) into the key state
+   // GBA P2 buttons are OR'd onto P1 - the emulator sees both
+   if (p2_gba_input) {
+      new_key |= p2_gba_input;
+      p2_gba_input = 0; // Consumed
    }
 
    if ((new_key | old_key) != old_key)

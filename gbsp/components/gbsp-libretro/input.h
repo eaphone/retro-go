@@ -57,6 +57,9 @@ static const map btn_map[] = {
 };
 
 extern bool libretro_supports_bitmasks;
+
+// CoPlay P2 input for GBA (extern from input.c)
+extern u32 p2_gba_input;
 extern bool libretro_supports_ff_override;
 extern bool libretro_ff_enabled;
 extern bool libretro_ff_enabled_prev;

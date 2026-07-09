@@ -180,12 +180,26 @@ void sms_main(void)
         bool drawFrame = !skipFrames;
         bool slowFrame = false;
 
+    #ifdef COPLAY_ENABLED
+        // If coplay is active, send frame to client and get P2 input
+        if (coplay_active) {
+            rg_coplay_send_frame((uint16_t *)bitmap.data,
+                bitmap.width, bitmap.height, &coplay_p2_input);
+        }
+    #endif
+
         if (joystick & (RG_KEY_MENU|RG_KEY_OPTION))
         {
             if (joystick & RG_KEY_MENU)
                 rg_gui_game_menu();
             else
                 rg_gui_options_menu();
+        #ifdef COPLAY_ENABLED
+            if (rg_coplay_is_client_connected()) {
+                coplay_active = true;
+                RG_LOGI("sms: CoPlay host mode activated");
+            }
+        #endif
             continue;
         }
 
@@ -199,6 +213,26 @@ void sms_main(void)
         if (joystick & RG_KEY_RIGHT) input.pad[0] |= INPUT_RIGHT;
         if (joystick & RG_KEY_A)     input.pad[0] |= INPUT_BUTTON2;
         if (joystick & RG_KEY_B)     input.pad[0] |= INPUT_BUTTON1;
+
+    #ifdef COPLAY_ENABLED
+        // Map P2 input from CoPlay client to player 2 pad
+        if (coplay_active && coplay_p2_input) {
+            if (coplay_p2_input & RG_KEY_UP)     input.pad[1] |= INPUT_UP;
+            if (coplay_p2_input & RG_KEY_DOWN)   input.pad[1] |= INPUT_DOWN;
+            if (coplay_p2_input & RG_KEY_LEFT)   input.pad[1] |= INPUT_LEFT;
+            if (coplay_p2_input & RG_KEY_RIGHT)  input.pad[1] |= INPUT_RIGHT;
+            if (coplay_p2_input & RG_KEY_A)      input.pad[1] |= INPUT_BUTTON2;
+            if (coplay_p2_input & RG_KEY_B)      input.pad[1] |= INPUT_BUTTON1;
+            // For SMS/GG, P2 wants the same START/SELECT as P1
+            if (IS_SMS) {
+                if (coplay_p2_input & RG_KEY_START)  input.system |= INPUT_PAUSE;
+                if (coplay_p2_input & RG_KEY_SELECT) input.system |= INPUT_START;
+            } else if (IS_GG) {
+                if (coplay_p2_input & RG_KEY_START)  input.system |= INPUT_START;
+                if (coplay_p2_input & RG_KEY_SELECT) input.system |= INPUT_PAUSE;
+            }
+        }
+    #endif
 
         if (IS_SMS)
         {

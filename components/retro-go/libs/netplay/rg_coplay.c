@@ -220,13 +220,21 @@ void rg_coplay_host_init(void)
 
     is_client = false;
 
+    printf("\n*** coplay: Host SPI init start (host=%d) ***\n", spi_host);
+    gpio_reset_pin(RG_NET_MOSI);
+    gpio_reset_pin(RG_NET_MISO);
+    gpio_reset_pin(RG_NET_SCK);
+    gpio_reset_pin(RG_NET_CS);
+    RG_LOGI("coplay: Host SPI init: host=%d MOSI=%d MISO=%d SCK=%d CS=%d HS=%d",
+            spi_host, RG_NET_MOSI, RG_NET_MISO, RG_NET_SCK, RG_NET_CS, RG_NET_HS);
+
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = RG_NET_MOSI,
         .miso_io_num = RG_NET_MISO,
         .sclk_io_num = RG_NET_SCK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        .max_transfer_sz = COPLAY_FRAME_SIZE,
+        .max_transfer_sz = COPLAY_CHUNK_SIZE * 2,  // 8184 bytes - large enough for DMA efficiency
     };
 
     spi_device_interface_config_t dev_cfg = {
@@ -278,6 +286,7 @@ bool rg_coplay_wait_for_client(int timeout_ms)
         memset(rx_resp, 0, sizeof(rx_resp));
         bool ok = host_send_packet(COPLAY_PKT_HANDSHAKE, 0, NULL, 0, rx_resp, 1);
 
+        rg_task_delay(50);
         gpio_set_level(RG_NET_HS, HS_IDLE);
 
         if (ok && rx_resp[0] == COPLAY_PKT_HANDSHAKE_ACK) {
@@ -409,6 +418,10 @@ void rg_coplay_host_deinit(void)
 void rg_coplay_client_init(void)
 {
     if (coplay_initialized) return;
+    gpio_reset_pin(RG_NET_MOSI);
+    gpio_reset_pin(RG_NET_MISO);
+    gpio_reset_pin(RG_NET_SCK);
+    gpio_reset_pin(RG_NET_CS);
 
     is_client = true;
     // No large DMA pre-allocation — frame buffers provided by caller,
@@ -431,11 +444,12 @@ void rg_coplay_client_init(void)
 
     ESP_ERROR_CHECK(spi_slave_initialize(spi_host, &bus_cfg, &slave_cfg, SPI_DMA_CH_AUTO));
 
-    // Handshake GPIO (input, pulled down - host drives it high when active)
+    // Handshake GPIO (input, no pull — host drives it high/low)
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << RG_NET_HS),
         .mode = GPIO_MODE_INPUT,
-        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
     };
     gpio_config(&io_conf);
 
@@ -463,6 +477,8 @@ bool rg_coplay_wait_for_host(int timeout_ms)
     while (timeout_ms < 0 || rg_system_timer() < deadline) {
         // Check if host asserted handshake signal
         if (gpio_get_level(RG_NET_HS) == HS_ACTIVE) {
+            attempt+=1;
+            rg_gui_draw_message("CoPlay Client\n\nhandshaking with host...");
             // Try to receive handshake
             uint8_t type, seq;
             uint16_t len;
@@ -472,14 +488,14 @@ bool rg_coplay_wait_for_host(int timeout_ms)
                     RG_LOGI("coplay: Host detected!");
                     return true;
                 }
+            }else{
+                rg_gui_draw_message("CoPlay Client\n\nrecv packet failed...");
             }
         }
-
-        attempt++;
-        if (attempt % 20 == 0) {
-            RG_COPLAY_LOG("coplay: Waiting for host... (attempt %d)", attempt);
-        }
         rg_task_delay(50);
+    }
+    if (attempt>0){
+        rg_gui_draw_message("CoPlay Client\n\nWaiting for host...\n(Press B to cancel)");
     }
 
     RG_LOGE("coplay: Host not found after timeout");
@@ -712,7 +728,7 @@ void rg_coplay_client_run(void)
 
 void rg_coplay_host_start(void)
 {
-    RG_LOGI("coplay: Starting host session from game menu");
+    RG_LOGI("coplay: Starting host from game menu");
 
     rg_display_clear(C_BLACK);
     rg_gui_draw_message("CoPlay Host\n\nInitializing...");
@@ -738,14 +754,6 @@ void rg_coplay_host_start(void)
         if (rg_input_read_gamepad() & RG_KEY_B) {
             break;
         }
-
-        // Update the waiting indicator
-        static int dot_count = 0;
-        dot_count = (dot_count + 1) % 4;
-        char msg[64];
-        snprintf(msg, sizeof(msg), "CoPlay Host\n\nWaiting for client%s",
-                 "." + (4 - dot_count));
-        rg_gui_draw_message(msg);
     }
 
     if (!connected) {

@@ -22,6 +22,8 @@
 #include <driver/spi_master.h>
 #include <driver/spi_slave.h>
 #include <driver/gpio.h>
+#include "soc/usb_serial_jtag_reg.h"
+#include "hal/usb_serial_jtag_ll.h"
 
 #if defined(RG_NET_SPI_HOST)
 
@@ -49,6 +51,209 @@
 // ---------------------------------------------------------------------------
 static bool coplay_initialized = false;
 static bool coplay_connected = false;
+
+// Pin debug info
+typedef struct {
+    const char *name;
+    gpio_num_t num;
+} debug_pin_t;
+
+static const debug_pin_t debug_pins[] = {
+    {"SCK",  RG_NET_SCK},
+    {"CS",   RG_NET_CS},
+    {"MOSI", RG_NET_MOSI},
+    {"MISO", RG_NET_MISO},
+    {"HS",   RG_NET_HS},
+};
+#define DEBUG_PIN_COUNT (sizeof(debug_pins) / sizeof(debug_pins[0]))
+
+// Manual pin control state
+#define PIN_MODE_AUTO     0  // SPI driver controls this pin
+#define PIN_MODE_INPUT    1  // Manually set as input (high-Z)
+#define PIN_MODE_OUT_HIGH 2  // Manually driven HIGH
+#define PIN_MODE_OUT_LOW  3  // Manually driven LOW
+
+static int selected_pin_idx = 0;
+static int pin_modes[DEBUG_PIN_COUNT] = {PIN_MODE_AUTO};
+
+// ---------------------------------------------------------------------------
+// Pin status display
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Release USB Serial/JTAG control over GPIO24/25 so they can be used as
+// normal GPIO (e.g., SPI MOSI/MISO).
+//
+// On ESP32-P4, GPIO24 = USB D-, GPIO25 = USB D+.
+// The USB D+ pin has an internal pull-up that keeps it HIGH by default.
+// We must:
+//   1. Disable the USB D+ pull-up resistor
+//   2. Reset both pins via gpio_reset_pin() so GPIO matrix takes over
+//
+// WARNING: After calling this, USB Serial/JTAG console will STOP WORKING.
+// You'll need to use UART for serial output, or re-enable USB before flashing.
+// ---------------------------------------------------------------------------
+static void usb_pins_release(void)
+{
+    gpio_reset_pin(RG_NET_MOSI);
+    gpio_reset_pin(RG_NET_MISO);
+    gpio_reset_pin(RG_NET_SCK);
+    gpio_reset_pin(RG_NET_CS);
+    gpio_reset_pin(RG_NET_HS);
+
+    // Step 1: Disable USB D+ internal pull-up (this is what keeps GPIO25 HIGH)
+    SET_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PAD_PULL_OVERRIDE);
+    CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_DP_PULLUP);
+
+    // Also disable D- pull if present
+    CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_DM_PULLUP);
+
+    // Small delay for register write to take effect
+    rg_task_delay(10);
+
+    // Step 2: Reset both pins so GPIO driver takes full control
+    gpio_reset_pin(RG_NET_MOSI); // GPIO25 / USB D+
+    gpio_reset_pin(RG_NET_MISO); // GPIO24 / USB D-
+
+    RG_LOGI("coplay: USB Serial/JTAG pins released (GPIO%d/%d now free)",
+            RG_NET_MOSI, RG_NET_MISO);
+}
+
+// Apply manual control mode to a pin
+static void apply_pin_mode(int idx)
+{
+    gpio_num_t num = debug_pins[idx].num;
+    switch (pin_modes[idx]) {
+        case PIN_MODE_AUTO:
+            // Reset to default — SPI driver will reconfigure on next init/transaction
+            gpio_reset_pin(num);
+            break;
+        case PIN_MODE_INPUT:
+            gpio_set_direction(num, GPIO_MODE_INPUT);
+            gpio_set_pull_mode(num, GPIO_FLOATING);
+            break;
+        case PIN_MODE_OUT_HIGH:
+            gpio_set_direction(num, GPIO_MODE_OUTPUT);
+            gpio_set_pull_mode(num, GPIO_FLOATING);
+            gpio_set_level(num, 1);
+            break;
+        case PIN_MODE_OUT_LOW:
+            gpio_set_direction(num, GPIO_MODE_OUTPUT);
+            gpio_set_pull_mode(num, GPIO_FLOATING);
+            gpio_set_level(num, 0);
+            break;
+    }
+}
+
+static void draw_pin_status(bool is_client, const char *title)
+{
+    char buf[64];
+    int y;
+
+    // Title bar
+    rg_display_clear(C_BLACK);
+    snprintf(buf, sizeof(buf), "%s", title);
+    rg_gui_draw_text(0, 4, 320, buf, C_CYAN, C_BLACK, RG_TEXT_ALIGN_CENTER);
+
+    // Subtitle with instructions
+    rg_gui_draw_text(0, 20, 320,
+        "UP/DOWN=select | A=HIGH | B=LOW | SEL=Input(auto) | START=All Auto",
+        C_SILVER, C_BLACK, RG_TEXT_ALIGN_CENTER);
+
+    // Column headers
+    y = 38;
+    rg_gui_draw_text(2, y, 316, "PIN   GPIO   LEVEL   CTRL-MODE",
+                     C_YELLOW, C_BLACK, 0);
+    y += 14;
+    rg_gui_draw_text(2, y, 316, "----  -----  ------  ------------",
+                     C_DARK_GRAY, C_BLACK, 0);
+    y += 18;
+
+    // Each pin row
+    for (int i = 0; i < DEBUG_PIN_COUNT; i++) {
+        int level = gpio_get_level(debug_pins[i].num);
+        bool selected = (i == selected_pin_idx);
+
+        // Row background — selected gets bright highlight
+        int row_h = 24;
+        rg_color_t row_bg;
+        if (selected) {
+            row_bg = 0x0020; // dark blue highlight
+        } else if (level != 0) {
+            row_bg = 0x1008; // subtle red tint when HIGH
+        } else {
+            row_bg = C_BLACK;
+        }
+        // Draw selection border
+        if (selected) {
+            rg_gui_draw_rect(1, y - 1, 318, row_h, 2, C_CYAN, row_bg);
+        }
+
+        // Selection arrow
+        snprintf(buf, sizeof(buf), "%s %-4s", selected ? ">" : " ", debug_pins[i].name);
+        rg_gui_draw_text(6, y + 2, 90, buf, selected ? C_CYAN : C_GREEN, row_bg, 0);
+
+        // GPIO number
+        snprintf(buf, sizeof(buf), "%2d", debug_pins[i].num);
+        rg_gui_draw_text(72, y + 2, 36, buf, C_WHITE, row_bg, 0);
+
+        // Level: HIGH/LOW with color
+        const char *lvl_str = level ? "HIGH" : "LOW ";
+        rg_color_t lvl_color = level ? C_RED : C_BLUE;
+        rg_gui_draw_text(110, y + 2, 48, lvl_str, lvl_color, row_bg, RG_TEXT_BIGGER);
+
+        // Visual indicator bar
+        int bar_x = 164;
+        int bar_w = 70;
+        int bar_h = 18;
+        rg_gui_draw_rect(bar_x, y + 2, bar_w, bar_h, 1, C_GRAY, C_BLACK);
+        if (level) {
+            rg_gui_draw_rect(bar_x + 2, y + 4, bar_w - 4, bar_h - 4, 0, C_RED, C_RED);
+        } else {
+            rg_gui_draw_rect(bar_x + 2, y + 4, bar_w - 4, bar_h - 4, 0, C_DARK_BLUE, C_DARK_BLUE);
+        }
+
+        // Control mode text
+        const char *mode_str;
+        rg_color_t mode_color;
+        switch (pin_modes[i]) {
+            case PIN_MODE_OUT_HIGH: mode_str = "FORCE HI"; mode_color = C_RED; break;
+            case PIN_MODE_OUT_LOW:  mode_str = "FORCE LO"; mode_color = C_BLUE; break;
+            case PIN_MODE_INPUT:    mode_str = "INPUT(Z)"; mode_color = C_YELLOW; break;
+            default:                mode_str = "AUTO(SPI)"; mode_color = C_DARK_GRAY; break;
+        }
+        rg_gui_draw_text(240, y + 2, 76, mode_str, mode_color, row_bg, 0);
+
+        y += row_h;
+    }
+
+    // Connection status line at bottom
+    y += 8;
+    const char *status;
+    rg_color_t st_color;
+    if (is_client) {
+        status = "Status: Pin Debug Mode (no SPI active)";
+        st_color = C_CYAN;
+    } else {
+        status = "Status: Pin Debug Mode (no SPI active)";
+        st_color = C_ORANGE;
+    }
+    rg_gui_draw_text(0, y, 320, status, st_color, C_BLACK, RG_TEXT_ALIGN_CENTER);
+
+    // Mode label
+    y += 14;
+    snprintf(buf, sizeof(buf), "Role: %s", is_client ? "CLIENT (Slave)" : "HOST (Master)");
+    rg_gui_draw_text(0, y, 320, buf, C_WHITE, C_BLACK, RG_TEXT_ALIGN_CENTER);
+
+    // Tip line
+    y += 14;
+    snprintf(buf, sizeof(buf), "[%s] sel=%d mode=%d",
+             debug_pins[selected_pin_idx].name,
+             debug_pins[selected_pin_idx].num,
+             pin_modes[selected_pin_idx]);
+    rg_gui_draw_text(0, y, 320, buf, C_DARK_GRAY, C_BLACK, RG_TEXT_ALIGN_CENTER);
+
+    rg_display_sync();
+}
 
 // Host-side handles
 static spi_device_handle_t spi_host_handle;
@@ -617,109 +822,84 @@ void rg_coplay_client_run(void)
 {
     RG_LOGI("coplay: Starting CoPlay client mode");
 
-    rg_display_clear(C_BLACK);
-    rg_gui_draw_message("CoPlay Client\n\nInitializing...");
-
-    // Initialize SPI as client
-    rg_coplay_client_init();
-    if (!coplay_initialized) {
-        rg_gui_draw_message("CoPlay Client\n\nSPI init failed!");
-        rg_task_delay(2000);
-        return;
+    // Reset all pins to a clean input state first
+    selected_pin_idx = 0;
+    for (int i = 0; i < DEBUG_PIN_COUNT; i++) {
+        pin_modes[i] = PIN_MODE_INPUT;
+        gpio_reset_pin(debug_pins[i].num);
+        gpio_set_direction(debug_pins[i].num, GPIO_MODE_INPUT);
+        gpio_set_pull_mode(debug_pins[i].num, GPIO_FLOATING);
     }
+    usb_pins_release();
+    coplay_initialized = false;
+    is_client = true;
 
-    // Create a surface for received frames
-    rg_surface_t *display_surf = rg_surface_create(COPLAY_FRAME_WIDTH, COPLAY_FRAME_HEIGHT,
-                                                    RG_PIXEL_565_LE, MEM_SLOW);
-    if (!display_surf) {
-        rg_gui_draw_message("CoPlay Client\n\nOut of memory!");
-        rg_coplay_client_deinit();
-        rg_task_delay(2000);
-        return;
-    }
+    draw_pin_status(true, "Pin Debug - CLIENT side");
 
-    // Set display geometry to match game resolution
-    rg_display_set_geometry(COPLAY_FRAME_WIDTH, COPLAY_FRAME_HEIGHT,
-                            &(rg_margins_t){0, 0, 0, 0});
+    // Pure pin debug loop — no SPI init, no handshake, no connection
+    while (true) {
+        uint32_t joystick = rg_input_read_gamepad();
 
-    // Wait for host
-    rg_gui_draw_message("CoPlay Client\n\nWaiting for host...\n(Press B to cancel)");
-
-    int64_t start_wait = rg_system_timer();
-    bool host_found = false;
-
-    while (rg_system_timer() - start_wait < 30000000) { // 30s timeout
-        host_found = rg_coplay_wait_for_host(100);
-        if (host_found) break;
-
-        // Check for cancel
-        if (rg_input_read_gamepad() & RG_KEY_B) {
+        if (joystick & RG_KEY_UP) {
+            selected_pin_idx = (selected_pin_idx - 1 + DEBUG_PIN_COUNT) % DEBUG_PIN_COUNT;
+            draw_pin_status(true, "Pin Debug - CLIENT side");
+            rg_task_delay(150);
+            continue;
+        }
+        if (joystick & RG_KEY_DOWN) {
+            selected_pin_idx = (selected_pin_idx + 1) % DEBUG_PIN_COUNT;
+            draw_pin_status(true, "Pin Debug - CLIENT side");
+            rg_task_delay(150);
+            continue;
+        }
+        if (joystick & RG_KEY_A) {
+            pin_modes[selected_pin_idx] = PIN_MODE_OUT_HIGH;
+            apply_pin_mode(selected_pin_idx);
+            draw_pin_status(true, "Pin Debug - CLIENT side");
+            rg_task_delay(100);
+            continue;
+        }
+        if (joystick & RG_KEY_B) {
+            pin_modes[selected_pin_idx] = PIN_MODE_OUT_LOW;
+            apply_pin_mode(selected_pin_idx);
+            draw_pin_status(true, "Pin Debug - CLIENT side");
+            rg_task_delay(100);
+            continue;
+        }
+        if (joystick & RG_KEY_SELECT) {
+            pin_modes[selected_pin_idx] = PIN_MODE_INPUT;
+            apply_pin_mode(selected_pin_idx);
+            draw_pin_status(true, "Pin Debug - CLIENT side");
+            rg_task_delay(100);
+            continue;
+        }
+        if (joystick & RG_KEY_START) {
+            // Reset all pins to input (high-Z)
+            for (int i = 0; i < DEBUG_PIN_COUNT; i++) {
+                pin_modes[i] = PIN_MODE_INPUT;
+                apply_pin_mode(i);
+            }
+            draw_pin_status(true, "Pin Debug - All pins reset to INPUT");
+            rg_task_delay(200);
+            continue;
+        }
+        if (joystick & RG_KEY_MENU) {
             break;
         }
+
+        // Redraw periodically for live level updates
+        static int redraw_counter = 0;
+        if (++redraw_counter >= 8) { // ~400ms
+            draw_pin_status(true, "Pin Debug - CLIENT side");
+            redraw_counter = 0;
+        }
+        rg_task_delay(50);
     }
 
-    if (!host_found) {
-        rg_gui_draw_message("CoPlay Client\n\nConnection cancelled!");
-        rg_task_delay(1500);
-        rg_surface_free(display_surf);
-        rg_coplay_client_deinit();
-        return;
+    // Cleanup: release all pins
+    for (int i = 0; i < DEBUG_PIN_COUNT; i++) {
+        gpio_reset_pin(debug_pins[i].num);
     }
-
-    // Main client loop
-    RG_LOGI("coplay: Client connected, entering main loop");
-    rg_display_clear(C_BLACK);
-    rg_gui_draw_message("CoPlay Client\n\nConnected!");
-    rg_task_delay(500);
-
-    uint32_t frames_received = 0;
-    int64_t fps_timer = rg_system_timer();
-
-    while (coplay_connected) {
-        // Receive frame
-        uint16_t *fb = (uint16_t *)display_surf->data;
-        int rx_w, rx_h;
-        if (!rg_coplay_recv_frame(fb, COPLAY_FRAME_SIZE, &rx_w, &rx_h)) {
-            break;
-        }
-        // Update surface dimensions if they changed
-        if (rx_w != display_surf->width || rx_h != display_surf->height) {
-            rg_display_set_geometry(rx_w, rx_h, &(rg_margins_t){0, 0, 0, 0});
-            display_surf->width = rx_w;
-            display_surf->height = rx_h;
-            display_surf->stride = rx_w * 2;
-        }
-
-        // Display the received frame
-        rg_display_submit(display_surf, 0);
-
-        // Read local input and send to host
-        coplay_gamepad_t gamepad = (coplay_gamepad_t)rg_input_read_gamepad();
-        rg_coplay_send_input(gamepad);
-
-        frames_received++;
-
-        // FPS counter (every ~60 frames)
-        if (frames_received % 60 == 0) {
-            int64_t elapsed = rg_system_timer() - fps_timer;
-            RG_LOGI("coplay: Client FPS=%.1f", 60000000.0 / elapsed);
-            fps_timer = rg_system_timer();
-        }
-
-        // Check for exit (B + SELECT together)
-        if (gamepad & RG_KEY_B && gamepad & RG_KEY_START) {
-            RG_LOGI("coplay: Client exiting on user request");
-            break;
-        }
-    }
-
-    RG_LOGI("coplay: Client disconnected after %ld frames", frames_received);
-
-    rg_gui_draw_message("CoPlay Client\n\nDisconnected.");
-    rg_task_delay(1000);
-
-    rg_surface_free(display_surf);
-    rg_coplay_client_deinit();
 }
 
 // ===========================================================================
@@ -728,46 +908,86 @@ void rg_coplay_client_run(void)
 
 void rg_coplay_host_start(void)
 {
-    RG_LOGI("coplay: Starting host from game menu");
+    RG_LOGI("coplay: Starting host pin debug mode");
 
-    rg_display_clear(C_BLACK);
-    rg_gui_draw_message("CoPlay Host\n\nInitializing...");
-
-    rg_coplay_host_init();
-
-    if (!coplay_initialized) {
-        rg_gui_draw_message("CoPlay Host\n\nSPI init failed!");
-        rg_task_delay(1500);
-        return;
+    // Reset all pins to a clean input state first
+    selected_pin_idx = 0;
+    for (int i = 0; i < DEBUG_PIN_COUNT; i++) {
+        pin_modes[i] = PIN_MODE_INPUT;
+        gpio_reset_pin(debug_pins[i].num);
+        gpio_set_direction(debug_pins[i].num, GPIO_MODE_INPUT);
+        gpio_set_pull_mode(debug_pins[i].num, GPIO_FLOATING);
     }
+    usb_pins_release();
+    coplay_initialized = false;
+    is_client = false;
 
-    // Wait for client with cancel option
-    rg_gui_draw_message("CoPlay Host\n\nWaiting for client...\n(Press B to cancel)");
+    draw_pin_status(false, "Pin Debug - HOST side");
 
-    int64_t deadline = rg_system_timer() + 60000000; // 60s timeout
-    bool connected = false;
+    // Pure pin debug loop — no SPI init, no handshake, no connection
+    while (true) {
+        uint32_t joystick = rg_input_read_gamepad();
 
-    while (rg_system_timer() < deadline) {
-        connected = rg_coplay_wait_for_client(500);
-        if (connected) break;
-
-        if (rg_input_read_gamepad() & RG_KEY_B) {
+        if (joystick & RG_KEY_UP) {
+            selected_pin_idx = (selected_pin_idx - 1 + DEBUG_PIN_COUNT) % DEBUG_PIN_COUNT;
+            draw_pin_status(false, "Pin Debug - HOST side");
+            rg_task_delay(150);
+            continue;
+        }
+        if (joystick & RG_KEY_DOWN) {
+            selected_pin_idx = (selected_pin_idx + 1) % DEBUG_PIN_COUNT;
+            draw_pin_status(false, "Pin Debug - HOST side");
+            rg_task_delay(150);
+            continue;
+        }
+        if (joystick & RG_KEY_A) {
+            pin_modes[selected_pin_idx] = PIN_MODE_OUT_HIGH;
+            apply_pin_mode(selected_pin_idx);
+            draw_pin_status(false, "Pin Debug - HOST side");
+            rg_task_delay(100);
+            continue;
+        }
+        if (joystick & RG_KEY_B) {
+            pin_modes[selected_pin_idx] = PIN_MODE_OUT_LOW;
+            apply_pin_mode(selected_pin_idx);
+            draw_pin_status(false, "Pin Debug - HOST side");
+            rg_task_delay(100);
+            continue;
+        }
+        if (joystick & RG_KEY_SELECT) {
+            pin_modes[selected_pin_idx] = PIN_MODE_INPUT;
+            apply_pin_mode(selected_pin_idx);
+            draw_pin_status(false, "Pin Debug - HOST side");
+            rg_task_delay(100);
+            continue;
+        }
+        if (joystick & RG_KEY_START) {
+            // Reset all pins to input (high-Z)
+            for (int i = 0; i < DEBUG_PIN_COUNT; i++) {
+                pin_modes[i] = PIN_MODE_INPUT;
+                apply_pin_mode(i);
+            }
+            draw_pin_status(false, "Pin Debug - All pins reset to INPUT");
+            rg_task_delay(200);
+            continue;
+        }
+        if (joystick & RG_KEY_MENU) {
             break;
         }
+
+        // Redraw periodically for live level updates
+        static int redraw_counter = 0;
+        if (++redraw_counter >= 8) { // ~400ms
+            draw_pin_status(false, "Pin Debug - HOST side");
+            redraw_counter = 0;
+        }
+        rg_task_delay(50);
     }
 
-    if (!connected) {
-        rg_gui_draw_message("CoPlay Host\n\nCancelled.");
-        rg_task_delay(1000);
-        rg_coplay_host_deinit();
-        return;
+    // Cleanup: release all pins
+    for (int i = 0; i < DEBUG_PIN_COUNT; i++) {
+        gpio_reset_pin(debug_pins[i].num);
     }
-
-    // Client connected! Set up P2 input and return to emulator loop.
-    // The emulator loop will call rg_coplay_send_frame() each frame.
-    rg_display_clear(C_BLACK);
-    rg_gui_draw_message("CoPlay Host\n\nClient connected!\n\nP2 Ready!");
-    rg_task_delay(1000);
 }
 
 #else // !defined(RG_NET_SPI_HOST)

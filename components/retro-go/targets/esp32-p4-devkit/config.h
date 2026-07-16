@@ -162,8 +162,8 @@
 #define RG_NET_SPI_HOST           SPI3_HOST         // GPSPI1 on P4. LCD uses SPI2.
 #define RG_NET_SCK                  GPIO_NUM_38
 #define RG_NET_CS                   GPIO_NUM_37
-#define RG_NET_MOSI                 GPIO_NUM_25
-#define RG_NET_MISO                 GPIO_NUM_24
+#define RG_NET_MOSI                 GPIO_NUM_30
+#define RG_NET_MISO                 GPIO_NUM_29
 #define RG_NET_HS                   GPIO_NUM_17
 #define FRAME_BUFFER_SIZE           (320 * 240 * 2) // 153600 bytes for 320x240 RGB565 frame
 #define COPLAY_ENABLED              1

@@ -718,6 +718,11 @@ bool rg_display_set_geometry(int width, int height, const rg_margins_t *margins)
 void rg_display_deinit(void)
 {
     rg_task_send(display_task_queue, &(rg_task_msg_t){.type = RG_TASK_MSG_STOP}, -1);
+    // The display task must stop producing SPI transfers before lcd_deinit
+    // removes the device. Its task wrapper clears the registry entry on exit.
+    while (rg_task_find("rg_display"))
+        rg_task_delay(1);
+    lcd_sync();
     // lcd_set_backlight(0);
     lcd_deinit();
     RG_LOGI("Display terminated.\n");

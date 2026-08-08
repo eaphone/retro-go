@@ -152,8 +152,11 @@ static void spi_init(void)
 
 static void spi_deinit(void)
 {
-    // When transactions are still in flight, spi_bus_remove_device fails and spi_bus_free then crashes.
-    // The real solution would be to wait for transactions to be done, but this is simpler for now...
+    // Wait until spi_task has returned every queued transaction descriptor.
+    // At that point no transfer is still owned by the SPI driver.
+    while (uxQueueMessagesWaiting(spi_transactions) < SPI_TRANSACTION_COUNT)
+        rg_task_delay(1);
+
     if (spi_bus_remove_device(spi_dev) == ESP_OK)
         spi_bus_free(RG_SCREEN_HOST);
     else
@@ -205,7 +208,8 @@ static inline void lcd_send_buffer(uint16_t *buffer, size_t length)
 
 static void lcd_sync(void)
 {
-    // Unused for SPI LCD
+    while (uxQueueMessagesWaiting(spi_transactions) < SPI_TRANSACTION_COUNT)
+        rg_task_delay(1);
 }
 
 static void lcd_init(void)

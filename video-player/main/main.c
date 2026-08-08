@@ -1,6 +1,7 @@
 #include <rg_system.h>
 
 #include <stdbool.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,13 @@
 #define AUDIO_PREBUFFER_MS 250
 #define AUDIO_TASK_QUEUE_LENGTH 16
 #define MP3_OUTPUT_BUFFER_SIZE 4608
+#define PLAYER_CONTROLS_TIMEOUT_US 3000000LL
+#define PLAYER_TOAST_TIMEOUT_US 1200000LL
+#define PLAYER_SEEK_SECONDS 10U
+
+#define PLAYER_COLOR_PANEL 0x0862
+#define PLAYER_COLOR_TRACK 0x52AB
+#define PLAYER_COLOR_ACCENT 0xFB20
 
 static rg_app_t *app;
 static rg_surface_t *updates[2];
@@ -45,6 +53,18 @@ typedef struct {
     uint8_t *mp3_output;
     uint32_t mp3_output_size;
 } audio_playback_t;
+
+typedef struct {
+    bool paused;
+    bool controls_visible;
+    bool exit_requested;
+    bool has_frame;
+    int64_t controls_hide_at;
+    int64_t pause_started_at;
+    int64_t toast_hide_at;
+    uint32_t last_buttons;
+    char toast[32];
+} player_ui_t;
 
 static bool save_state_handler(const char *filename) { (void)filename; return true; }
 static bool load_state_handler(const char *filename) { (void)filename; return true; }
@@ -441,6 +461,189 @@ static void stop_audio_task(audio_playback_t *playback)
     }
 }
 
+static bool start_audio_task(audio_playback_t *playback, avi_player_t *player,
+                             uint64_t position_frames, bool paused)
+{
+    memset(playback, 0, sizeof(*playback));
+    playback->player = player;
+    playback->paused = paused;
+    playback->queued_frames = position_frames;
+    playback->submitted_frames = position_frames;
+
+    if (!player->info.has_audio) return false;
+    if (audio_format_is_mpeg(player->info.audio.format_tag) &&
+        !init_mp3_decoder(playback)) {
+        return false;
+    }
+
+    playback->running = true;
+    playback->task = rg_task_create("video_audio", audio_task, playback, 20 * 1024,
+                                    AUDIO_TASK_QUEUE_LENGTH, RG_TASK_PRIORITY_6, 1);
+    if (!playback->task) {
+        playback->running = false;
+        close_mp3_decoder(playback);
+        RG_LOGE("Failed to start audio playback task");
+        return false;
+    }
+
+    while (!playback->task_ready) {
+        rg_task_delay(1);
+    }
+    return true;
+}
+
+static void fill_rect(rg_surface_t *surface, int x, int y, int width, int height,
+                      rg_color_t color)
+{
+    if (!surface || !surface->data || width <= 0 || height <= 0) return;
+    if (x < 0) {
+        width += x;
+        x = 0;
+    }
+    if (y < 0) {
+        height += y;
+        y = 0;
+    }
+    if (x + width > surface->width) width = surface->width - x;
+    if (y + height > surface->height) height = surface->height - y;
+    if (width <= 0 || height <= 0) return;
+
+    uint16_t pixel = (uint16_t)color;
+    if (surface->format == RG_PIXEL_565_BE) pixel = (pixel << 8) | (pixel >> 8);
+    for (int row = 0; row < height; ++row) {
+        uint16_t *dst = (uint16_t *)((uint8_t *)surface->data + surface->offset +
+                                     (y + row) * surface->stride) + x;
+        for (int column = 0; column < width; ++column) dst[column] = pixel;
+    }
+}
+
+static void draw_play_icon(rg_surface_t *surface, int center_x, int center_y, bool paused)
+{
+    const int box_size = 34;
+    fill_rect(surface, center_x - box_size / 2, center_y - box_size / 2,
+              box_size, box_size, PLAYER_COLOR_ACCENT);
+
+    if (paused) {
+        for (int row = -9; row <= 9; ++row) {
+            int icon_width = 10 - abs(row);
+            fill_rect(surface, center_x - 5, center_y + row, icon_width, 1, C_WHITE);
+        }
+    } else {
+        fill_rect(surface, center_x - 6, center_y - 9, 5, 19, C_WHITE);
+        fill_rect(surface, center_x + 2, center_y - 9, 5, 19, C_WHITE);
+    }
+}
+
+static void format_player_time(char *buffer, size_t size, uint64_t seconds)
+{
+    uint64_t hours = seconds / 3600U;
+    uint64_t minutes = (seconds / 60U) % 60U;
+    uint64_t secs = seconds % 60U;
+    if (hours) {
+        snprintf(buffer, size, "%02llu:%02llu:%02llu",
+                 (unsigned long long)hours, (unsigned long long)minutes,
+                 (unsigned long long)secs);
+    } else {
+        snprintf(buffer, size, "%02llu:%02llu", (unsigned long long)minutes,
+                 (unsigned long long)secs);
+    }
+}
+
+static const char *player_filename(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    const char *backslash = strrchr(path, '\\');
+    const char *name = slash;
+    if (backslash && (!name || backslash > name)) name = backslash;
+    return name ? name + 1 : path;
+}
+
+static void draw_player_ui(rg_surface_t *surface, const char *filepath,
+                           uint32_t frame, uint32_t total_frames,
+                           uint32_t frame_time, const player_ui_t *ui)
+{
+    const int width = surface->width;
+    const int height = surface->height;
+    const int panel_height = 72;
+    const int panel_y = height - panel_height;
+    const int track_x = 16;
+    const int track_width = width - 32;
+    const int track_y = height - 47;
+    uint32_t progress_width = total_frames
+        ? (uint32_t)(((uint64_t)track_width * frame) / total_frames) : 0;
+    if (progress_width > (uint32_t)track_width) progress_width = track_width;
+
+    fill_rect(surface, 0, 0, width, 28, PLAYER_COLOR_PANEL);
+    fill_rect(surface, 0, panel_y, width, panel_height, PLAYER_COLOR_PANEL);
+    fill_rect(surface, track_x, track_y, track_width, 4, PLAYER_COLOR_TRACK);
+    if (progress_width) {
+        fill_rect(surface, track_x, track_y, progress_width, 4, PLAYER_COLOR_ACCENT);
+    }
+    fill_rect(surface, track_x + (int)progress_width - 2, track_y - 2, 5, 8,
+              PLAYER_COLOR_ACCENT);
+
+    draw_play_icon(surface, width / 2, height / 2, ui->paused);
+
+    uint64_t elapsed_seconds = ((uint64_t)frame * frame_time) / 1000000ULL;
+    uint64_t total_seconds = ((uint64_t)total_frames * frame_time) / 1000000ULL;
+    char elapsed[32];
+    char duration[32];
+    char time_text[72];
+    format_player_time(elapsed, sizeof(elapsed), elapsed_seconds);
+    format_player_time(duration, sizeof(duration), total_seconds);
+    snprintf(time_text, sizeof(time_text), "%s / %s", elapsed, duration);
+
+    rg_gui_set_surface(surface);
+    rg_gui_draw_text(10, 6, width - 20, player_filename(filepath), C_WHITE,
+                     PLAYER_COLOR_PANEL, RG_TEXT_ALIGN_LEFT);
+    rg_gui_draw_text(track_x, height - 37, track_width, time_text, C_WHITE,
+                     PLAYER_COLOR_PANEL, RG_TEXT_ALIGN_LEFT | RG_TEXT_MONOSPACE);
+    rg_gui_draw_text(track_x, height - 19, track_width,
+                     "A Play  </> Seek  ^/v Vol  B Back", C_LIGHT_GRAY,
+                     PLAYER_COLOR_PANEL, RG_TEXT_ALIGN_CENTER);
+
+    if (ui->toast[0] && rg_system_timer() < ui->toast_hide_at) {
+        rg_rect_t text_rect = TEXT_RECT(ui->toast, width - 24);
+        int toast_width = text_rect.width + 12;
+        int toast_x = (width - toast_width) / 2;
+        int toast_y = panel_y - 27;
+        fill_rect(surface, toast_x, toast_y, toast_width, 21, PLAYER_COLOR_PANEL);
+        rg_gui_draw_text(toast_x + 6, toast_y + 3, text_rect.width, ui->toast,
+                         C_WHITE, PLAYER_COLOR_PANEL, RG_TEXT_ALIGN_CENTER);
+    }
+    rg_gui_set_surface(NULL);
+}
+
+static void compose_video_frame(rg_surface_t *surface, const uint16_t *frame_buffer,
+                                const avi_info_t *info, int dst_x, int dst_y,
+                                int copy_width, int copy_height)
+{
+    memset(surface->data, 0, surface->width * surface->height * sizeof(uint16_t));
+    uint16_t *dst = (uint16_t *)surface->data + dst_y * surface->width + dst_x;
+    const uint16_t *src = frame_buffer;
+    for (int y = 0; y < copy_height; ++y) {
+        memcpy(dst, src, copy_width * sizeof(uint16_t));
+        dst += surface->width;
+        src += info->width;
+    }
+}
+
+static void show_player_controls(player_ui_t *ui, int64_t now)
+{
+    ui->controls_visible = true;
+    ui->controls_hide_at = now + PLAYER_CONTROLS_TIMEOUT_US;
+}
+
+static void set_player_toast(player_ui_t *ui, int64_t now, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    vsnprintf(ui->toast, sizeof(ui->toast), format, args);
+    va_end(args);
+    ui->toast_hide_at = now + PLAYER_TOAST_TIMEOUT_US;
+    show_player_controls(ui, now);
+}
+
 static int mjpeg_play(const char *filepath)
 {
     avi_player_t player;
@@ -482,56 +685,150 @@ static int mjpeg_play(const char *filepath)
     // menu can still access the volume and output settings.
     rg_audio_init(info->has_audio ? info->audio.sample_rate : 48000);
 
-    audio_playback_t audio_playback = {
-        .player = &player,
-        .task = NULL,
-        .running = false,
-        .task_ready = false,
-        .stop_requested = false,
-        .paused = false,
-        .end_of_stream = false,
-        .queued_frames = 0,
-    };
-    bool audio_decoder_ready = true;
-    if (info->has_audio && audio_format_is_mpeg(info->audio.format_tag)) {
-        audio_decoder_ready = init_mp3_decoder(&audio_playback);
-    }
-    if (info->has_audio && audio_decoder_ready) {
-        audio_playback.running = true;
-        audio_playback.task = rg_task_create("video_audio", audio_task, &audio_playback, 20 * 1024,
-                                             AUDIO_TASK_QUEUE_LENGTH,
-                                             RG_TASK_PRIORITY_6, 1);
-        if (!audio_playback.task) {
-            audio_playback.running = false;
-            RG_LOGE("Failed to start audio playback task");
-        } else {
-            while (!audio_playback.task_ready) {
-                rg_task_delay(1);
-            }
-        }
-    }
+    audio_playback_t audio_playback;
+    start_audio_task(&audio_playback, &player, 0, false);
 
     uint32_t frame_count = 0;
     uint32_t rendered_frames = 0;
     uint32_t dropped_frames = 0;
+    uint32_t frame_time = info->microsec_per_frame ? info->microsec_per_frame : 33333;
     if (audio_playback.running) {
         queue_audio_until(&audio_playback,
                           (uint64_t)info->audio.sample_rate * AUDIO_PREBUFFER_MS / 1000U);
     }
     int64_t start_time = rg_system_timer();
+    player_ui_t ui = {
+        .paused = false,
+        .controls_visible = true,
+        .controls_hide_at = start_time + PLAYER_CONTROLS_TIMEOUT_US,
+        // Ignore the launcher confirmation key until it has been released.
+        .last_buttons = rg_input_read_gamepad(),
+    };
+    bool preview_pending = false;
 
-    while (avi_player_has_more_frames(&player)) {
+    while (!ui.exit_requested && avi_player_has_more_frames(&player)) {
+        int64_t now = rg_system_timer();
         uint32_t joystick = rg_input_read_gamepad();
-        if (joystick & (RG_KEY_MENU | RG_KEY_OPTION)) {
-            int64_t pause_start = rg_system_timer();
+        uint32_t pressed = joystick & ~ui.last_buttons;
+        bool redraw_ui = false;
+
+        if (pressed) show_player_controls(&ui, now);
+
+        if (pressed & (RG_KEY_MENU | RG_KEY_OPTION)) {
+            bool was_paused = ui.paused;
+            int64_t menu_start = now;
             audio_playback.paused = true;
-            if (joystick & RG_KEY_MENU) {
+            if (pressed & RG_KEY_MENU) {
                 rg_gui_game_menu();
             } else {
                 rg_gui_options_menu();
             }
-            start_time += rg_system_timer() - pause_start;
-            audio_playback.paused = false;
+            now = rg_system_timer();
+            if (!was_paused) start_time += now - menu_start;
+            audio_playback.paused = was_paused;
+            show_player_controls(&ui, now);
+            redraw_ui = true;
+            joystick = rg_input_read_gamepad();
+            pressed = 0;
+        }
+
+        if (pressed & RG_KEY_B) {
+            ui.exit_requested = true;
+            break;
+        }
+
+        if (pressed & (RG_KEY_A | RG_KEY_START)) {
+            ui.paused = !ui.paused;
+            audio_playback.paused = ui.paused;
+            if (ui.paused) {
+                ui.pause_started_at = now;
+                set_player_toast(&ui, now, "Paused");
+            } else {
+                start_time += now - ui.pause_started_at;
+                set_player_toast(&ui, now, "Playing");
+            }
+            redraw_ui = true;
+        }
+
+        if (pressed & (RG_KEY_UP | RG_KEY_DOWN)) {
+            int volume = rg_audio_get_volume();
+            volume += (pressed & RG_KEY_UP) ? 5 : -5;
+            if (volume < 0) volume = 0;
+            if (volume > 100) volume = 100;
+            rg_audio_set_volume(volume);
+            set_player_toast(&ui, now, "Volume %d%%", rg_audio_get_volume());
+            redraw_ui = true;
+        }
+
+        if (pressed & (RG_KEY_LEFT | RG_KEY_RIGHT)) {
+            uint32_t seek_frames = (uint32_t)
+                (((uint64_t)PLAYER_SEEK_SECONDS * 1000000ULL + frame_time - 1) / frame_time);
+            uint32_t target_frame;
+            if (pressed & RG_KEY_LEFT) {
+                target_frame = frame_count > seek_frames ? frame_count - seek_frames : 0;
+            } else {
+                uint64_t target = (uint64_t)frame_count + seek_frames;
+                target_frame = target < info->total_frames
+                    ? (uint32_t)target : info->total_frames - 1;
+            }
+
+            stop_audio_task(&audio_playback);
+            close_mp3_decoder(&audio_playback);
+            if (avi_player_seek_to_frame(&player, target_frame) == 0) {
+                frame_count = target_frame;
+                start_time = now - (int64_t)frame_count * frame_time;
+                if (ui.paused) ui.pause_started_at = now;
+
+                // Reinitializing the sink clears samples that were queued for
+                // the old position before starting the decoder at the target.
+                rg_audio_deinit();
+                rg_audio_init(info->has_audio ? info->audio.sample_rate : 48000);
+                uint64_t audio_position = info->has_audio
+                    ? ((uint64_t)frame_count * frame_time * info->audio.sample_rate) / 1000000ULL
+                    : 0;
+                start_audio_task(&audio_playback, &player, audio_position, ui.paused);
+                if (audio_playback.running) {
+                    queue_audio_until(&audio_playback,
+                                      audio_position + (uint64_t)info->audio.sample_rate *
+                                      AUDIO_PREBUFFER_MS / 1000U);
+                }
+                set_player_toast(&ui, now, pressed & RG_KEY_LEFT ? "-10 seconds" : "+10 seconds");
+                preview_pending = true;
+            } else {
+                RG_LOGW("Could not seek to frame %lu", (unsigned long)target_frame);
+                uint64_t audio_position = info->has_audio
+                    ? ((uint64_t)frame_count * frame_time * info->audio.sample_rate) / 1000000ULL
+                    : 0;
+                start_audio_task(&audio_playback, &player, audio_position, ui.paused);
+                if (audio_playback.running) {
+                    queue_audio_until(&audio_playback,
+                                      audio_position + (uint64_t)info->audio.sample_rate *
+                                      AUDIO_PREBUFFER_MS / 1000U);
+                }
+                set_player_toast(&ui, now, "Seek unavailable");
+            }
+            redraw_ui = true;
+        }
+
+        ui.last_buttons = joystick;
+        if (ui.toast[0] && now >= ui.toast_hide_at) {
+            ui.toast[0] = 0;
+            redraw_ui = true;
+        }
+        if (!ui.paused && ui.controls_visible && now >= ui.controls_hide_at) {
+            ui.controls_visible = false;
+        }
+
+        if (redraw_ui && ui.has_frame && ui.paused && !preview_pending) {
+            compose_video_frame(currentUpdate, frame_buf, info, dst_x, dst_y, copy_w, copy_h);
+            draw_player_ui(currentUpdate, filepath, frame_count, info->total_frames,
+                           frame_time, &ui);
+            rg_display_submit(currentUpdate, 0);
+        }
+
+        if (ui.paused && !preview_pending) {
+            rg_task_delay(20);
+            rg_system_tick(0);
             continue;
         }
 
@@ -543,14 +840,13 @@ static int mjpeg_play(const char *filepath)
             break;
         }
 
-        frame_count++;
-        uint32_t frame_time = info->microsec_per_frame ? info->microsec_per_frame : 33333;
+        frame_count = avi_player_get_current_frame(&player);
         int64_t deadline = start_time + (int64_t)frame_count * frame_time;
 
         // Keep the same real-time policy as the emulator components: when
         // rendering falls behind, consume but do not decode late video frames.
         // The audio task continues on the real-time clock.
-        bool drop_frame = frame_count > 1 && rg_system_timer() > deadline;
+        bool drop_frame = !ui.paused && frame_count > 1 && rg_system_timer() > deadline;
         if (drop_frame) {
             free(jpeg_data);
             dropped_frames++;
@@ -572,17 +868,17 @@ static int mjpeg_play(const char *filepath)
             if (error != ESP_OK) {
                 RG_LOGW("Frame %lu decode failed: %d", (unsigned long)(frame_count - 1), error);
             } else {
-                uint16_t *dst = (uint16_t *)currentUpdate->data + dst_y * RG_SCREEN_WIDTH + dst_x;
-                uint16_t *src = frame_buf;
-                for (int y = 0; y < copy_h; ++y) {
-                    memcpy(dst, src, copy_w * sizeof(uint16_t));
-                    dst += RG_SCREEN_WIDTH;
-                    src += info->width;
+                compose_video_frame(currentUpdate, frame_buf, info, dst_x, dst_y, copy_w, copy_h);
+                ui.has_frame = true;
+                if (ui.controls_visible || ui.paused) {
+                    draw_player_ui(currentUpdate, filepath, frame_count, info->total_frames,
+                                   frame_time, &ui);
                 }
                 rg_display_submit(currentUpdate, 0);
                 rendered_frames++;
             }
         }
+        preview_pending = false;
 
         if (audio_playback.running) {
             uint64_t target_audio_frames =
@@ -591,8 +887,10 @@ static int mjpeg_play(const char *filepath)
                 (uint64_t)info->audio.sample_rate * AUDIO_PREBUFFER_MS / 1000U;
             queue_audio_until(&audio_playback, target_audio_frames);
         }
-        int64_t remaining = deadline - rg_system_timer();
-        if (remaining > 1000) rg_task_delay((uint32_t)(remaining / 1000));
+        if (!ui.paused) {
+            int64_t remaining = deadline - rg_system_timer();
+            if (remaining > 1000) rg_task_delay((uint32_t)(remaining / 1000));
+        }
 
         if (frame_count % 100 == 0) {
             int64_t elapsed = rg_system_timer() - start_time;
@@ -601,8 +899,7 @@ static int mjpeg_play(const char *filepath)
         }
     }
 
-    if (audio_playback.running) {
-        uint32_t frame_time = info->microsec_per_frame ? info->microsec_per_frame : 33333;
+    if (audio_playback.running && !ui.exit_requested) {
         uint64_t final_audio_frames =
             ((uint64_t)frame_count * frame_time * info->audio.sample_rate) / 1000000ULL;
         queue_audio_until(&audio_playback, final_audio_frames);

@@ -397,8 +397,68 @@ uint32_t avi_player_get_current_frame(avi_player_t *player)
 
 int avi_player_seek_to_frame(avi_player_t *player, uint32_t frame_index)
 {
-    (void)player;
-    (void)frame_index;
-    RG_LOGW("Seek not implemented yet");
-    return -1;
+    if (!player || !player->video_file || !player->info.total_frames) return -1;
+
+    if (frame_index >= player->info.total_frames) {
+        frame_index = player->info.total_frames - 1;
+    }
+
+    if (seek_to(player->video_file, player->movi_data_start) != 0) return -1;
+
+    uint32_t frame_offset = 0;
+    uint32_t frame_size = 0;
+    for (uint32_t index = 0; index <= frame_index; ++index) {
+        if (find_next_stream_chunk(player->video_file, player->movi_data_end,
+                                   player->info.video_stream_index, true,
+                                   &frame_offset, &frame_size) != 0) {
+            return -1;
+        }
+
+        if (index < frame_index &&
+            seek_to(player->video_file, padded_chunk_end(frame_offset, frame_size)) != 0) {
+            return -1;
+        }
+    }
+
+    player->next_frame_offset = frame_offset;
+    player->next_frame_size = frame_size;
+    player->current_frame = frame_index;
+
+    // AVI media chunks are normally interleaved in playback order. Select the
+    // audio chunk nearest to the target video chunk so playback can resume
+    // without scanning or decoding from the beginning of the file.
+    if (player->info.has_audio && player->audio_file) {
+        uint32_t audio_offset = 0;
+        uint32_t audio_size = 0;
+        uint32_t previous_offset = 0;
+        uint32_t previous_size = 0;
+
+        if (seek_to(player->audio_file, player->movi_data_start) != 0) return -1;
+        while (find_next_stream_chunk(player->audio_file, player->movi_data_end,
+                                      player->info.audio_stream_index, false,
+                                      &audio_offset, &audio_size) == 0) {
+            if (audio_offset >= frame_offset) break;
+            previous_offset = audio_offset;
+            previous_size = audio_size;
+            if (seek_to(player->audio_file,
+                        padded_chunk_end(audio_offset, audio_size)) != 0) {
+                audio_offset = 0;
+                audio_size = 0;
+                break;
+            }
+            audio_offset = 0;
+            audio_size = 0;
+        }
+
+        if (!audio_offset && previous_offset) {
+            audio_offset = previous_offset;
+            audio_size = previous_size;
+        }
+        player->audio_next_offset = audio_offset;
+        player->audio_next_size = audio_size;
+    }
+
+    RG_LOGI("Seeked to frame %lu/%lu", (unsigned long)frame_index,
+            (unsigned long)player->info.total_frames);
+    return 0;
 }

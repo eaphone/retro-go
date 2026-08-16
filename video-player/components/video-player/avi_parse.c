@@ -1,471 +1,464 @@
 #include <rg_system.h>
+
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "avi_parse.h"
 
-// 读取 32 位小端整数
-static inline uint32_t read_le32(const uint8_t* p) {
-    return p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
+#define FOURCC(a, b, c, d) \
+    ((uint32_t)(a) | ((uint32_t)(b) << 8) | ((uint32_t)(c) << 16) | ((uint32_t)(d) << 24))
+
+#define AVI_STREAM_NONE UINT8_MAX
+
+static inline uint16_t read_le16(const uint8_t *p)
+{
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
-// 读取 16 位小端整数
-static inline uint16_t read_le16(const uint8_t* p) {
-    return p[0] | (p[1] << 8);
+static inline uint32_t read_le32(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-// 单独的 AVI 解析函数，不改变文件指针位置
-static int avi_parse_info(const char* filepath, avi_info_t* info) {
-    FILE* file = fopen(filepath, "rb");
+static long padded_chunk_end(long data_offset, uint32_t size)
+{
+    return data_offset + (long)size + (size & 1U);
+}
+
+static int seek_to(FILE *file, long offset)
+{
+    return offset >= 0 && fseek(file, offset, SEEK_SET) == 0 ? 0 : -1;
+}
+
+static void parse_stream_list(FILE *file, long list_end, uint8_t stream_index, avi_info_t *info)
+{
+    uint32_t stream_type = 0;
+    bool selected_video = false;
+    bool selected_audio = false;
+
+    while (ftell(file) >= 0 && ftell(file) + 8 <= list_end) {
+        uint8_t header[8];
+        if (fread(header, 1, sizeof(header), file) != sizeof(header)) break;
+
+        uint32_t id = read_le32(header);
+        uint32_t size = read_le32(header + 4);
+        long data_offset = ftell(file);
+        long next_offset = padded_chunk_end(data_offset, size);
+        if (next_offset < data_offset || next_offset > list_end + 1) break;
+
+        if (id == FOURCC('s', 't', 'r', 'h') && size >= 56) {
+            uint8_t strh[56];
+            if (fread(strh, 1, sizeof(strh), file) != sizeof(strh)) break;
+            stream_type = read_le32(strh);
+
+            if (stream_type == FOURCC('v', 'i', 'd', 's') &&
+                info->video_stream_index == AVI_STREAM_NONE) {
+                uint32_t scale = read_le32(strh + 20);
+                uint32_t rate = read_le32(strh + 24);
+                info->video_stream_index = stream_index;
+                info->fps_numerator = rate;
+                info->fps_denominator = scale;
+                selected_video = true;
+                RG_LOGI("Video stream %u: %lu/%lu fps", (unsigned)stream_index,
+                        (unsigned long)rate, (unsigned long)scale);
+            } else if (stream_type == FOURCC('a', 'u', 'd', 's') &&
+                       info->audio_stream_index == AVI_STREAM_NONE) {
+                info->audio_stream_index = stream_index;
+                info->audio.total_samples = read_le32(strh + 32);
+                info->has_audio = true;
+                selected_audio = true;
+                RG_LOGI("Audio stream %u found", (unsigned)stream_index);
+            }
+        } else if (id == FOURCC('s', 't', 'r', 'f')) {
+            if (stream_type == FOURCC('v', 'i', 'd', 's') && selected_video && size >= 20) {
+                uint8_t bitmap_info[20];
+                if (fread(bitmap_info, 1, sizeof(bitmap_info), file) != sizeof(bitmap_info)) break;
+                uint32_t compression = read_le32(bitmap_info + 16);
+                if (compression == FOURCC('M', 'J', 'P', 'G')) {
+                    RG_LOGI("MJPEG compression detected");
+                } else {
+                    RG_LOGW("Video compression 0x%08lX is not MJPEG", (unsigned long)compression);
+                }
+            } else if (stream_type == FOURCC('a', 'u', 'd', 's') && selected_audio && size >= 16) {
+                uint8_t wave_format[16];
+                if (fread(wave_format, 1, sizeof(wave_format), file) != sizeof(wave_format)) break;
+                info->audio.format_tag = read_le16(wave_format);
+                info->audio.channels = read_le16(wave_format + 2);
+                info->audio.sample_rate = read_le32(wave_format + 4);
+                info->audio.avg_bytes_per_sec = read_le32(wave_format + 8);
+                info->audio.block_align = read_le16(wave_format + 12);
+                info->audio.bits_per_sample = read_le16(wave_format + 14);
+                RG_LOGI("Audio format: tag=%u, %lu Hz, %u channel(s), %u-bit, avg=%lu B/s, align=%u",
+                        (unsigned)info->audio.format_tag, (unsigned long)info->audio.sample_rate,
+                        (unsigned)info->audio.channels, (unsigned)info->audio.bits_per_sample,
+                        (unsigned long)info->audio.avg_bytes_per_sec,
+                        (unsigned)info->audio.block_align);
+            }
+        }
+
+        if (seek_to(file, next_offset) != 0) break;
+    }
+}
+
+static void parse_header_list(FILE *file, long list_end, avi_info_t *info)
+{
+    uint8_t stream_index = 0;
+
+    while (ftell(file) >= 0 && ftell(file) + 8 <= list_end) {
+        uint8_t header[8];
+        if (fread(header, 1, sizeof(header), file) != sizeof(header)) break;
+
+        uint32_t id = read_le32(header);
+        uint32_t size = read_le32(header + 4);
+        long data_offset = ftell(file);
+        long next_offset = padded_chunk_end(data_offset, size);
+        if (next_offset < data_offset || next_offset > list_end + 1) break;
+
+        if (id == FOURCC('a', 'v', 'i', 'h') && size >= 40) {
+            uint8_t avih[40];
+            if (fread(avih, 1, sizeof(avih), file) != sizeof(avih)) break;
+            info->microsec_per_frame = read_le32(avih);
+            info->max_bytes_per_sec = read_le32(avih + 4);
+            info->total_frames = read_le32(avih + 16);
+            info->width = read_le32(avih + 32);
+            info->height = read_le32(avih + 36);
+        } else if (id == FOURCC('L', 'I', 'S', 'T') && size >= 4) {
+            uint8_t list_type_data[4];
+            if (fread(list_type_data, 1, sizeof(list_type_data), file) != sizeof(list_type_data)) break;
+            if (read_le32(list_type_data) == FOURCC('s', 't', 'r', 'l')) {
+                parse_stream_list(file, data_offset + size, stream_index++, info);
+            }
+        }
+
+        if (seek_to(file, next_offset) != 0) break;
+    }
+}
+
+static int avi_parse_info(const char *filepath, avi_info_t *info)
+{
+    FILE *file = fopen(filepath, "rb");
     if (!file) {
         RG_LOGE("Failed to open file: %s", filepath);
         return -1;
     }
-    
-    memset(info, 0, sizeof(avi_info_t));
-    
-    // 读取 RIFF 头
+
+    memset(info, 0, sizeof(*info));
+    info->video_stream_index = AVI_STREAM_NONE;
+    info->audio_stream_index = AVI_STREAM_NONE;
+
     uint8_t riff_header[12];
-    if (fread(riff_header, 1, 12, file) != 12) {
-        RG_LOGE("Failed to read RIFF header");
-        fclose(file);
-        return -1;
-    }
-    
-    uint32_t riff_id = read_le32(&riff_header[0]);
-    uint32_t file_size = read_le32(&riff_header[4]);
-    uint32_t avi_id = read_le32(&riff_header[8]);
-    
-    if (riff_id != 0x46464952 || avi_id != 0x20495641) {
+    if (fread(riff_header, 1, sizeof(riff_header), file) != sizeof(riff_header) ||
+        read_le32(riff_header) != FOURCC('R', 'I', 'F', 'F') ||
+        read_le32(riff_header + 8) != FOURCC('A', 'V', 'I', ' ')) {
         RG_LOGE("Not a valid AVI file");
         fclose(file);
         return -1;
     }
-    
-    RG_LOGI("Valid AVI file, size=%lu", file_size);
-    
-    // 解析 chunks
-    while (ftell(file) < file_size + 8) {
-        uint8_t chunk[8];
-        if (fread(chunk, 1, 8, file) != 8) break;
-        
-        uint32_t chunk_id = read_le32(&chunk[0]);
-        uint32_t chunk_size = read_le32(&chunk[4]);
-        
-        if (chunk_id == 0x5453494c) { // 'LIST'
-            uint8_t list_type[4];
-            if (fread(list_type, 1, 4, file) != 4) break;
-            uint32_t type = read_le32(list_type);
-            
-            if (type == 0x6c726468) { // 'hdrl'
-                RG_LOGI("Found hdrl LIST at offset %ld", ftell(file) - 12);
-                
-                // 解析 hdrl
-                uint32_t hdrl_end = ftell(file) + chunk_size - 4;
-                while (ftell(file) < hdrl_end) {
-                    uint8_t subchunk[8];
-                    if (fread(subchunk, 1, 8, file) != 8) break;
-                    
-                    uint32_t sub_id = read_le32(&subchunk[0]);
-                    uint32_t sub_size = read_le32(&subchunk[4]);
-                    
-                    if (sub_id == 0x68697661) { // 'avih'
-                        uint8_t avih_data[56];
-                        if (fread(avih_data, 1, 56, file) == 56) {
-                            info->microsec_per_frame = read_le32(&avih_data[0]);
-                            info->max_bytes_per_sec = read_le32(&avih_data[4]);
-                            info->total_frames = read_le32(&avih_data[16]);
-                            info->width = read_le32(&avih_data[32]);
-                            info->height = read_le32(&avih_data[36]);
-                            RG_LOGI("AVIH: %lux%lu, %lu frames, %.2f fps",
-                                    info->width, info->height, info->total_frames,
-                                    1000000.0f / info->microsec_per_frame);
-                        }
-                    } 
-                    else if (sub_id == 0x6c727473) { // 'strl'
-                        uint8_t strl_size[4];
-                        if (fread(strl_size, 1, 4, file) != 4) break;
-                        uint32_t strl_list_size = read_le32(strl_size);
-                        uint32_t strl_end = ftell(file) + strl_list_size - 4;
-                        
-                        while (ftell(file) < strl_end) {
-                            uint8_t str_chunk[8];
-                            if (fread(str_chunk, 1, 8, file) != 8) break;
-                            
-                            uint32_t str_id = read_le32(&str_chunk[0]);
-                            uint32_t str_size = read_le32(&str_chunk[4]);
-                            
-                            if (str_id == 0x68727473) { // 'strh'
-                                uint8_t strh_data[56];
-                                if (fread(strh_data, 1, 56, file) == 56) {
-                                    uint32_t stream_type = read_le32(&strh_data[0]);
-                                    if (stream_type == 0x73646976) { // 'vids'
-                                        info->fps_numerator = read_le32(&strh_data[20]);   // Rate
-                                        info->fps_denominator = read_le32(&strh_data[16]); // Scale
-                                        RG_LOGI("Video stream: %lu/%lu fps",
-                                                info->fps_numerator, info->fps_denominator);
-                                    }
-                                    else if (stream_type == 0x73647561) { // 'auds'
-                                        info->has_audio = true;
-                                        uint32_t scale = read_le32(&strh_data[16]);
-                                        uint32_t rate = read_le32(&strh_data[20]);
-                                        if (scale != 0) {
-                                            info->audio.sample_rate = rate / scale;
-                                        }
-                                        RG_LOGI("Audio stream found, sample rate = %lu Hz", info->audio.sample_rate);
-                                    }
-                                }
-                            }
-                            else if (str_id == 0x66727473) { // 'strf'
-                                if (info->has_audio) {
-                                    // 读取 WAVEFORMATEX (16字节基础)
-                                    uint8_t wf[16];
-                                    if (fread(wf, 1, 16, file) == 16) {
-                                        uint16_t format_tag = read_le16(&wf[0]);
-                                        info->audio.channels = read_le16(&wf[2]);
-                                        info->audio.sample_rate = read_le32(&wf[4]);
-                                        info->audio.avg_bytes_per_sec = read_le32(&wf[8]);
-                                        info->audio.block_align = read_le16(&wf[12]);
-                                        info->audio.bits_per_sample = read_le16(&wf[14]);
-                                        //RG_LOGI("Audio format: %d Hz, %d channels, %d bits",
-                                        //        info->audio.sample_rate, info->audio.channels, info->audio.bits_per_sample);
-                                        // 跳过可能的额外扩展字节 (cbSize)
-                                        if (str_size > 16) {
-                                            fseek(file, str_size - 16, SEEK_CUR);
-                                        }
-                                    } else {
-                                        fseek(file, str_size, SEEK_CUR);
-                                    }
-                                } else {
-                                    // 视频流 strf
-                                    uint8_t strf_data[40];
-                                    if (fread(strf_data, 1, 40, file) == 40) {
-                                        uint32_t compression = read_le32(&strf_data[16]);
-                                        if (compression == 0x47504a4d) {
-                                            RG_LOGI("MJPEG compression detected");
-                                        }
-                                    } else {
-                                        fseek(file, str_size, SEEK_CUR);
-                                    }
-                                }
-                            }
-                            else {
-                                fseek(file, str_size, SEEK_CUR);
-                            }
-                        }
-                    }
-                    else {
-                        fseek(file, sub_size, SEEK_CUR);
-                    }
-                }
-            } 
-            else if (type == 0x69766f6d) { // 'movi'
-                RG_LOGI("Found movi LIST at offset %ld", ftell(file) - 12);
-                info->movi_offset = ftell(file) - 12;
-                // 找到 movi 后，不需要继续解析了
-                fclose(file);
-                return 0;
-            }
-            else {
-                fseek(file, chunk_size - 4, SEEK_CUR);
-            }
-        }
-        else {
-            fseek(file, chunk_size, SEEK_CUR);
-        }
+
+    long riff_end = 8L + read_le32(riff_header + 4);
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return -1;
     }
-    
+    long file_end = ftell(file);
+    if (riff_end > file_end) riff_end = file_end;
+    if (seek_to(file, 12) != 0) {
+        fclose(file);
+        return -1;
+    }
+
+    while (ftell(file) >= 0 && ftell(file) + 8 <= riff_end) {
+        uint8_t header[8];
+        if (fread(header, 1, sizeof(header), file) != sizeof(header)) break;
+
+        uint32_t id = read_le32(header);
+        uint32_t size = read_le32(header + 4);
+        long data_offset = ftell(file);
+        long next_offset = padded_chunk_end(data_offset, size);
+        if (next_offset < data_offset || next_offset > riff_end + 1) break;
+
+        if (id == FOURCC('L', 'I', 'S', 'T') && size >= 4) {
+            uint8_t list_type_data[4];
+            if (fread(list_type_data, 1, sizeof(list_type_data), file) != sizeof(list_type_data)) break;
+            uint32_t list_type = read_le32(list_type_data);
+            if (list_type == FOURCC('h', 'd', 'r', 'l')) {
+                parse_header_list(file, data_offset + size, info);
+            } else if (list_type == FOURCC('m', 'o', 'v', 'i')) {
+                info->movi_offset = (uint32_t)(data_offset + 4);
+                info->movi_size = size - 4;
+            }
+        }
+
+        if (seek_to(file, next_offset) != 0) break;
+    }
+
     fclose(file);
-    return (info->movi_offset != 0) ? 0 : -1;
-}
 
-static int find_next_video_frame(FILE* file, uint32_t* out_offset, uint32_t* out_size) {
-    int max_attempts = 10000;
-    int attempts = 0;
-    
-    while (attempts++ < max_attempts) {
-        long pos = ftell(file);
-        
-        // 检查是否接近文件末尾
-        fseek(file, 0, SEEK_END);
-        long file_end = ftell(file);
-        fseek(file, pos, SEEK_SET);
-        
-        if (pos + 8 > file_end) {
-            RG_LOGI("Reached end of file at offset %ld", pos);
-            return -1;
-        }
-        
-        uint8_t chunk[8];
-        if (fread(chunk, 1, 8, file) != 8) {
-            RG_LOGE("Failed to read chunk at %ld", pos);
-            return -1;
-        }
-
-        uint32_t chunk_id = read_le32(&chunk[0]);
-        uint32_t chunk_size = read_le32(&chunk[4]);
-
-        // 可选：打印原始头部（调试用，正式使用时注释掉）
-        // RG_LOGI("Raw chunk header at %ld: %02X %02X %02X %02X %02X %02X %02X %02X", 
-        //         pos, chunk[0], chunk[1], chunk[2], chunk[3], 
-        //         chunk[4], chunk[5], chunk[6], chunk[7]);
-        
-        // 检查是否是视频帧 (00dc, 01dc, etc.)
-        if (chunk_id == 0x63643030 ||  // '00dc'
-            chunk_id == 0x63643031 ||  // '01dc'
-            chunk_id == 0x63643032) {  // '02dc'
-            *out_offset = ftell(file);  // 当前是数据开始位置
-            *out_size = chunk_size;
-            RG_LOGI("Found video frame at offset %lu, size=%lu, id=0x%08lX", 
-                    *out_offset, *out_size, (unsigned long)chunk_id);
-            return 0;
-        }
-        
-        // 跳过非视频块
-        if (fseek(file, chunk_size, SEEK_CUR) != 0) {
-            RG_LOGE("Failed to seek past chunk at %ld, size=%lu", pos, chunk_size);
-            return -1;
-        }
-        if (chunk_size & 1) {
-            fseek(file, 1, SEEK_CUR);  // 对齐到偶数边界
-        }
+    if (!info->microsec_per_frame && info->fps_numerator && info->fps_denominator) {
+        info->microsec_per_frame = (uint32_t)
+            ((1000000ULL * info->fps_denominator) / info->fps_numerator);
     }
-    
-    RG_LOGE("No video frame found after %d attempts", attempts);
-    return -1;
+
+    if (!info->width || !info->height || !info->total_frames || !info->movi_offset ||
+        info->video_stream_index == AVI_STREAM_NONE) {
+        RG_LOGE("Incomplete AVI header: %lux%lu, frames=%lu, movi=%lu, video_stream=%u",
+                (unsigned long)info->width, (unsigned long)info->height,
+                (unsigned long)info->total_frames, (unsigned long)info->movi_offset,
+                (unsigned)info->video_stream_index);
+        return -1;
+    }
+
+    return 0;
 }
 
-static int find_next_audio_chunk(FILE* file, uint32_t* out_offset, uint32_t* out_size) {
-    int attempts = 0;
-    while (attempts++ < 10000) {
-        long pos = ftell(file);
-        uint8_t chunk[8];
-        if (fread(chunk, 1, 8, file) != 8) return -1;
-        uint32_t id = read_le32(&chunk[0]);
-        uint32_t size = read_le32(&chunk[4]);
-        // 音频块 ID 通常为 '01wb' (0x62773130) 或 '02wb'
-        if (id == 0x62773130 || id == 0x62773230) {
-            *out_offset = ftell(file);
+static uint32_t stream_chunk_id(uint8_t stream_index, char type0, char type1)
+{
+    return FOURCC('0' + ((stream_index / 10) % 10), '0' + (stream_index % 10), type0, type1);
+}
+
+// Scans linearly through movi, descending into optional LIST 'rec ' chunks.
+static int find_next_stream_chunk(FILE *file, uint32_t movi_end, uint8_t stream_index,
+                                  bool video, uint32_t *out_offset, uint32_t *out_size)
+{
+    uint32_t wanted0 = stream_chunk_id(stream_index, video ? 'd' : 'w', video ? 'c' : 'b');
+    uint32_t wanted1 = video ? stream_chunk_id(stream_index, 'd', 'b') : wanted0;
+
+    while (ftell(file) >= 0 && (uint32_t)ftell(file) + 8 <= movi_end) {
+        uint8_t header[8];
+        if (fread(header, 1, sizeof(header), file) != sizeof(header)) return -1;
+
+        uint32_t id = read_le32(header);
+        uint32_t size = read_le32(header + 4);
+        long data_offset = ftell(file);
+        long next_offset = padded_chunk_end(data_offset, size);
+        if (next_offset < data_offset || (uint32_t)next_offset > movi_end + 1U) return -1;
+
+        if ((id == wanted0 || id == wanted1) && size > 0) {
+            *out_offset = (uint32_t)data_offset;
             *out_size = size;
-            RG_LOGI("Found audio chunk at offset %lu, size=%lu, id=0x%08lX", *out_offset, *out_size, (unsigned long)id);
             return 0;
         }
-        fseek(file, size, SEEK_CUR);
-        if (size & 1) fseek(file, 1, SEEK_CUR);
+
+        if ((id == FOURCC('L', 'I', 'S', 'T') || id == FOURCC('R', 'I', 'F', 'F')) && size >= 4) {
+            // Skip only the list type and continue into its child chunks.
+            if (seek_to(file, data_offset + 4) != 0) return -1;
+        } else if (seek_to(file, next_offset) != 0) {
+            return -1;
+        }
     }
+
     return -1;
 }
 
-int avi_player_init(avi_player_t* player, const char* filepath) {
+static int prime_stream(FILE *file, const avi_player_t *player, uint8_t stream_index,
+                        bool video, uint32_t *offset, uint32_t *size)
+{
+    if (seek_to(file, player->movi_data_start) != 0) return -1;
+    return find_next_stream_chunk(file, player->movi_data_end, stream_index,
+                                  video, offset, size);
+}
+
+int avi_player_init(avi_player_t *player, const char *filepath)
+{
     if (!player || !filepath) return -1;
-    
-    memset(player, 0, sizeof(avi_player_t));
-    
-    // 先解析 AVI 信息
-    if (avi_parse_info(filepath, &player->info) != 0) {
-        RG_LOGE("Failed to parse AVI info");
+    memset(player, 0, sizeof(*player));
+
+    if (avi_parse_info(filepath, &player->info) != 0) return -1;
+
+    player->movi_data_start = player->info.movi_offset;
+    player->movi_data_end = player->movi_data_start + player->info.movi_size;
+    if (player->movi_data_end < player->movi_data_start) return -1;
+
+    player->video_file = fopen(filepath, "rb");
+    if (!player->video_file) return -1;
+
+    if (prime_stream(player->video_file, player, player->info.video_stream_index, true,
+                     &player->next_frame_offset, &player->next_frame_size) != 0) {
+        RG_LOGE("No MJPEG frames found in AVI movi list");
+        avi_player_close(player);
         return -1;
     }
-    
-    if (player->info.width == 0 || player->info.total_frames == 0 || player->info.movi_offset == 0) {
-        RG_LOGE("Invalid AVI file: width=%lu, frames=%lu, movi_offset=%lu", 
-                player->info.width, player->info.total_frames, player->info.movi_offset);
-        return -1;
+
+    avi_audio_info_t *audio = &player->info.audio;
+    bool pcm_supported = audio->format_tag == AVI_AUDIO_FORMAT_PCM &&
+        audio->sample_rate && audio->channels && audio->channels <= 2 && audio->block_align &&
+        (audio->bits_per_sample == 8 || audio->bits_per_sample == 16 ||
+         audio->bits_per_sample == 24 || audio->bits_per_sample == 32) &&
+        audio->block_align >= audio->channels * (audio->bits_per_sample / 8U);
+    bool mp3_supported = (audio->format_tag == AVI_AUDIO_FORMAT_MPEG ||
+                          audio->format_tag == AVI_AUDIO_FORMAT_MP3) &&
+        audio->sample_rate && audio->channels && audio->channels <= 2;
+    if (player->info.has_audio && !pcm_supported && !mp3_supported) {
+        RG_LOGW("Unsupported AVI audio tag=%u; PCM and MPEG Layer I/II/III are supported; playing silently",
+                (unsigned)audio->format_tag);
+        player->info.has_audio = false;
     }
-    
-    // 打开文件用于读取帧数据
-    player->file = fopen(filepath, "rb");
-    if (!player->file) {
-        RG_LOGE("Failed to open AVI file: %s", filepath);
-        return -1;
-    }
-    
-    // 定位到 movi LIST 块
-    if (fseek(player->file, player->info.movi_offset, SEEK_SET) != 0) {
-        RG_LOGE("Failed to seek to movi offset %lu", player->info.movi_offset);
-        fclose(player->file);
-        player->file = NULL;
-        return -1;
-    }
-    
-    // 读取并验证 LIST 头
-    uint8_t list_header[12];
-    if (fread(list_header, 1, 12, player->file) != 12) {
-        RG_LOGE("Failed to read LIST header at offset %lu", player->info.movi_offset);
-        fclose(player->file);
-        player->file = NULL;
-        return -1;
-    }
-    
-    uint32_t list_id = read_le32(&list_header[0]);
-    uint32_t list_size = read_le32(&list_header[4]);
-    uint32_t list_type = read_le32(&list_header[8]);
-    
-    RG_LOGI("movi LIST: ID=0x%08lX, Size=%lu, Type=0x%08lX", 
-            (unsigned long)list_id, list_size, (unsigned long)list_type);
-    
-    if (list_id != 0x5453494c) {  // 'LIST'
-        RG_LOGE("Invalid LIST ID: 0x%08lX (expected 0x5453494c)", (unsigned long)list_id);
-        fclose(player->file);
-        player->file = NULL;
-        return -1;
-    }
-    
-    if (list_type != 0x69766f6d) {  // 'movi'
-        RG_LOGE("Invalid LIST type: 0x%08lX (expected 0x69766f6d)", (unsigned long)list_type);
-        fclose(player->file);
-        player->file = NULL;
-        return -1;
-    }
-    
-    // movi 数据开始位置
-    player->movi_data_start = ftell(player->file);
-    RG_LOGI("movi data starts at offset %lu, list_size=%lu", player->movi_data_start, list_size);
-    
-    // 查找第一帧视频并保存其位置
-    if (find_next_video_frame(player->file, &player->next_frame_offset, &player->next_frame_size) != 0) {
-        RG_LOGE("No video frame found in movi chunk");
-        fclose(player->file);
-        player->file = NULL;
-        return -1;
-    }
-    
-    // 如果存在音频流，定位第一个音频块
+
     if (player->info.has_audio) {
-        // 重置到 movi 数据开始位置
-        fseek(player->file, player->movi_data_start, SEEK_SET);
-        if (find_next_audio_chunk(player->file, &player->audio_next_offset, &player->audio_next_size) == 0) {
-            RG_LOGI("First audio chunk at offset %lu, size %lu", player->audio_next_offset, player->audio_next_size);
-        } else {
-            RG_LOGW("No audio chunks found, disabling audio");
+        player->audio_file = fopen(filepath, "rb");
+        if (!player->audio_file ||
+            prime_stream(player->audio_file, player, player->info.audio_stream_index, false,
+                         &player->audio_next_offset, &player->audio_next_size) != 0) {
+            RG_LOGW("No audio chunks found; playing silently");
+            if (player->audio_file) fclose(player->audio_file);
+            player->audio_file = NULL;
             player->info.has_audio = false;
         }
     }
-    
-    player->current_frame = 0;
-    
-    RG_LOGI("AVI player initialized: %lu x %lu, %lu frames, %.2f fps", 
-            player->info.width, player->info.height, player->info.total_frames,
-            1000000.0f / player->info.microsec_per_frame);
-    
+
+    const char *audio_name = !player->info.has_audio ? "none" :
+        (player->info.audio.format_tag == AVI_AUDIO_FORMAT_PCM ? "PCM" : "MPEG audio");
+    RG_LOGI("AVI ready: %lux%lu, %lu frames, %.2f fps, audio=%s",
+            (unsigned long)player->info.width, (unsigned long)player->info.height,
+            (unsigned long)player->info.total_frames,
+            player->info.microsec_per_frame ? 1000000.0f / player->info.microsec_per_frame : 0.0f,
+            audio_name);
     return 0;
 }
 
-int avi_player_get_next_frame(avi_player_t* player, uint8_t** out_data, uint32_t* out_size) {
-    if (!player || !player->file || !out_data || !out_size) return -1;
-    if (player->current_frame >= player->info.total_frames) {
-        RG_LOGI("End of video reached");
-        return 1;
-    }
-    
-    // 使用保存的下一帧位置
-    uint32_t frame_offset = player->next_frame_offset;
-    uint32_t frame_size = player->next_frame_size;
-    
-    if (frame_offset == 0) {
-        RG_LOGE("No frame offset available");
+static int read_current_chunk(FILE *file, uint32_t current_offset, uint32_t current_size,
+                              uint32_t movi_end, uint8_t stream_index, bool video,
+                              uint32_t *next_offset, uint32_t *next_size,
+                              uint8_t **out_data, uint32_t *out_size)
+{
+    uint8_t *data = malloc(current_size);
+    if (!data) {
+        RG_LOGE("Failed to allocate %lu-byte AVI chunk", (unsigned long)current_size);
         return -1;
     }
-    
-    // 读取帧数据
-    uint8_t* frame_data = (uint8_t*)malloc(frame_size);
-    if (!frame_data) {
-        RG_LOGE("Failed to allocate memory: %lu bytes", frame_size);
-        return -1;
-    }
-    
-    if (fseek(player->file, frame_offset, SEEK_SET) != 0) {
-        RG_LOGE("Failed to seek to frame offset %lu", frame_offset);
-        free(frame_data);
-        return -1;
-    }
-    
-    if (fread(frame_data, 1, frame_size, player->file) != frame_size) {
-        RG_LOGE("Failed to read frame data");
-        free(frame_data);
-        return -1;
-    }
-    
-    // 定位到下一帧的位置
-    long next_pos = frame_offset + frame_size;
-    if (frame_size & 1) next_pos++;
-    
-    if (fseek(player->file, next_pos, SEEK_SET) != 0) {
-        RG_LOGE("Failed to seek to next frame position");
-        free(frame_data);
-        return -1;
-    }
-    
-    // 查找下一帧
-    uint32_t next_offset, next_size;
-    if (find_next_video_frame(player->file, &next_offset, &next_size) == 0) {
-        player->next_frame_offset = next_offset;
-        player->next_frame_size = next_size;
-    } else {
-        // 没有更多帧了
-        player->next_frame_offset = 0;
-        player->next_frame_size = 0;
-    }
-    
-    *out_data = frame_data;
-    *out_size = frame_size;
-    player->current_frame++;
-    
-    RG_LOGI("Frame %lu read, size=%lu, next offset=%lu", 
-            player->current_frame, frame_size, player->next_frame_offset);
-    
-    return 0;
-}
 
-int avi_player_get_next_audio(avi_player_t* player, uint8_t** out_data, uint32_t* out_size) {
-    if (!player || !player->file || !out_data || !out_size) return -1;
-    if (!player->info.has_audio) return -1;
-    if (player->audio_next_offset == 0) return 1; // 无更多音频
-    
-    uint8_t* data = (uint8_t*)malloc(player->audio_next_size);
-    if (!data) return -1;
-    
-    fseek(player->file, player->audio_next_offset, SEEK_SET);
-    if (fread(data, 1, player->audio_next_size, player->file) != player->audio_next_size) {
+    if (seek_to(file, current_offset) != 0 || fread(data, 1, current_size, file) != current_size) {
         free(data);
         return -1;
     }
-    
-    // 定位到下一个音频块
-    long next = player->audio_next_offset + player->audio_next_size;
-    if (player->audio_next_size & 1) next++;
-    fseek(player->file, next, SEEK_SET);
-    if (find_next_audio_chunk(player->file, &player->audio_next_offset, &player->audio_next_size) != 0) {
-        player->audio_next_offset = 0;
-        player->audio_next_size = 0;
+
+    long scan_offset = padded_chunk_end(current_offset, current_size);
+    *next_offset = 0;
+    *next_size = 0;
+    if (seek_to(file, scan_offset) == 0) {
+        (void)find_next_stream_chunk(file, movi_end, stream_index, video, next_offset, next_size);
     }
-    
+
     *out_data = data;
-    *out_size = player->audio_next_size;
+    *out_size = current_size;
     return 0;
 }
 
-void avi_player_close(avi_player_t* player) {
-    if (!player) return;
-    if (player->file) {
-        fclose(player->file);
-        player->file = NULL;
-    }
-    memset(player, 0, sizeof(avi_player_t));
+int avi_player_get_next_frame(avi_player_t *player, uint8_t **out_data, uint32_t *out_size)
+{
+    if (!player || !player->video_file || !out_data || !out_size) return -1;
+    if (!player->next_frame_offset || player->current_frame >= player->info.total_frames) return 1;
+
+    int result = read_current_chunk(player->video_file,
+                                    player->next_frame_offset, player->next_frame_size,
+                                    player->movi_data_end, player->info.video_stream_index, true,
+                                    &player->next_frame_offset, &player->next_frame_size,
+                                    out_data, out_size);
+    if (result == 0) player->current_frame++;
+    return result;
 }
 
-const avi_info_t* avi_player_get_info(avi_player_t* player) {
+int avi_player_get_next_audio(avi_player_t *player, uint8_t **out_data, uint32_t *out_size)
+{
+    if (!player || !player->audio_file || !out_data || !out_size || !player->info.has_audio) return -1;
+    if (!player->audio_next_offset) return 1;
+
+    return read_current_chunk(player->audio_file,
+                              player->audio_next_offset, player->audio_next_size,
+                              player->movi_data_end, player->info.audio_stream_index, false,
+                              &player->audio_next_offset, &player->audio_next_size,
+                              out_data, out_size);
+}
+
+void avi_player_close(avi_player_t *player)
+{
+    if (!player) return;
+    if (player->video_file) fclose(player->video_file);
+    if (player->audio_file) fclose(player->audio_file);
+    memset(player, 0, sizeof(*player));
+}
+
+const avi_info_t *avi_player_get_info(avi_player_t *player)
+{
     return player ? &player->info : NULL;
 }
 
-int avi_player_has_more_frames(avi_player_t* player) {
-    return player ? (player->current_frame < player->info.total_frames) : 0;
+int avi_player_has_more_frames(avi_player_t *player)
+{
+    return player && player->next_frame_offset && player->current_frame < player->info.total_frames;
 }
 
-uint32_t avi_player_get_current_frame(avi_player_t* player) {
+uint32_t avi_player_get_current_frame(avi_player_t *player)
+{
     return player ? player->current_frame : 0;
 }
 
-int avi_player_seek_to_frame(avi_player_t* player, uint32_t frame_index) {
-    (void)player;
-    (void)frame_index;
-    RG_LOGW("Seek not implemented yet");
-    return -1;
+int avi_player_seek_to_frame(avi_player_t *player, uint32_t frame_index)
+{
+    if (!player || !player->video_file || !player->info.total_frames) return -1;
+
+    if (frame_index >= player->info.total_frames) {
+        frame_index = player->info.total_frames - 1;
+    }
+
+    if (seek_to(player->video_file, player->movi_data_start) != 0) return -1;
+
+    uint32_t frame_offset = 0;
+    uint32_t frame_size = 0;
+    for (uint32_t index = 0; index <= frame_index; ++index) {
+        if (find_next_stream_chunk(player->video_file, player->movi_data_end,
+                                   player->info.video_stream_index, true,
+                                   &frame_offset, &frame_size) != 0) {
+            return -1;
+        }
+
+        if (index < frame_index &&
+            seek_to(player->video_file, padded_chunk_end(frame_offset, frame_size)) != 0) {
+            return -1;
+        }
+    }
+
+    player->next_frame_offset = frame_offset;
+    player->next_frame_size = frame_size;
+    player->current_frame = frame_index;
+
+    // AVI media chunks are normally interleaved in playback order. Select the
+    // audio chunk nearest to the target video chunk so playback can resume
+    // without scanning or decoding from the beginning of the file.
+    if (player->info.has_audio && player->audio_file) {
+        uint32_t audio_offset = 0;
+        uint32_t audio_size = 0;
+        uint32_t previous_offset = 0;
+        uint32_t previous_size = 0;
+
+        if (seek_to(player->audio_file, player->movi_data_start) != 0) return -1;
+        while (find_next_stream_chunk(player->audio_file, player->movi_data_end,
+                                      player->info.audio_stream_index, false,
+                                      &audio_offset, &audio_size) == 0) {
+            if (audio_offset >= frame_offset) break;
+            previous_offset = audio_offset;
+            previous_size = audio_size;
+            if (seek_to(player->audio_file,
+                        padded_chunk_end(audio_offset, audio_size)) != 0) {
+                audio_offset = 0;
+                audio_size = 0;
+                break;
+            }
+            audio_offset = 0;
+            audio_size = 0;
+        }
+
+        if (!audio_offset && previous_offset) {
+            audio_offset = previous_offset;
+            audio_size = previous_size;
+        }
+        player->audio_next_offset = audio_offset;
+        player->audio_next_size = audio_size;
+    }
+
+    RG_LOGI("Seeked to frame %lu/%lu", (unsigned long)frame_index,
+            (unsigned long)player->info.total_frames);
+    return 0;
 }

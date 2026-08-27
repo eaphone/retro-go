@@ -113,16 +113,16 @@
  ****************************************************************************/
 // Refer to rg_input.h to see all available RG_KEY_* and RG_GAMEPAD_*_MAP types
 #define RG_GAMEPAD_GPIO_MAP {\
-    {RG_KEY_LEFT,   .num = GPIO_NUM_40, .pullup = 1, .level = 0},\
-    {RG_KEY_RIGHT,  .num = GPIO_NUM_41, .pullup = 1, .level = 0},\
-    {RG_KEY_UP,     .num = GPIO_NUM_35, .pullup = 1, .level = 0},\
-    {RG_KEY_DOWN,   .num = GPIO_NUM_39, .pullup = 1, .level = 0},\
-    {RG_KEY_SELECT, .num = GPIO_NUM_43, .pullup = 1, .level = 0},\
-    {RG_KEY_START,  .num = GPIO_NUM_42, .pullup = 1, .level = 0},\
+    {RG_KEY_LEFT,   .num = GPIO_NUM_41, .pullup = 1, .level = 0},\
+    {RG_KEY_RIGHT,  .num = GPIO_NUM_42, .pullup = 1, .level = 0},\
+    {RG_KEY_UP,     .num = GPIO_NUM_40, .pullup = 1, .level = 0},\
+    {RG_KEY_DOWN,   .num = GPIO_NUM_43, .pullup = 1, .level = 0},\
+    {RG_KEY_SELECT, .num = GPIO_NUM_44, .pullup = 1, .level = 0},\
+    {RG_KEY_START,  .num = GPIO_NUM_45, .pullup = 1, .level = 0},\
     {RG_KEY_MENU,   .num = GPIO_NUM_46, .pullup = 1, .level = 0},\
     {RG_KEY_OPTION, .num = GPIO_NUM_47, .pullup = 1, .level = 0},\
-    {RG_KEY_A,      .num = GPIO_NUM_44, .pullup = 1, .level = 0},\
-    {RG_KEY_B,      .num = GPIO_NUM_45, .pullup = 1, .level = 0},\
+    {RG_KEY_A,      .num = GPIO_NUM_35, .pullup = 1, .level = 0},\
+    {RG_KEY_B,      .num = GPIO_NUM_39, .pullup = 1, .level = 0},\
 }
 
 
@@ -133,8 +133,8 @@
 #define RG_BATTERY_ADC_UNIT         ADC_UNIT_2
 #define RG_BATTERY_ADC_CHANNEL      ADC_CHANNEL_3
 #define RG_BATTERY_KEY              GPIO_NUM_28
-#define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3200.f) / (3900.f - 3200.f) * 100.f)
-#define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 2.f * 0.001f)
+#define RG_BATTERY_CALC_PERCENT(raw) (((raw) - 3200.f) / (3900.f - 3200.f) * 100.f)
+#define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 0.001f)
 
 
 /****************************************************************************

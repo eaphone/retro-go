@@ -34,4 +34,6 @@ tiny386-go/sdkconfig
 video-player/sdkconfig
 launcher/sdkconfig
 .depends
-tiny386-go/components/tiny386-go/esp/sdkconfig
+*.bak
+build.esp32p4.bak
+build.esp32s3.bak

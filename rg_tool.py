@@ -28,7 +28,6 @@ PROJECT_APPS = {
   'fmsx':         [0, 16, 1089536],
   'gbsp':         [0, 16, 1048576],
   'tiny386-go':   [0, 16, 2031616],
-  'video-player': [0, 16,  720896],
 }
 # PROJECT_APPS = {}
 # for t in glob.glob("*/CMakeLists.txt"):
@@ -103,13 +102,20 @@ def build_image(apps, output_file, img_type="odroid", fatsize=0, target="unknown
 
 def clean_app(app):
     print("Cleaning up app '%s'..." % app)
+    target = "unknown"
     try:
-        os.unlink(os.path.join(app, "sdkconfig"))
-        os.unlink(os.path.join(app, "sdkconfig.old"))
+        sdkconfig_path = os.path.join(os.path.dirname(__file__),app, "sdkconfig")
+        with open(sdkconfig_path, "r") as f:
+            lines=f.readlines()
+            for i in lines:
+                if "CONFIG_IDF_TARGET=" in i:
+                    target=i.split("=")[-1].replace('"',"").strip()
+                    break
+        os.rename(os.path.join(app, "sdkconfig"), os.path.join(app, f"sdkconfig.{target}.bak"))
     except:
         pass
     try:
-        shutil.rmtree(os.path.join(app, "build"))
+        os.rename(os.path.join(app, "build"), os.path.join(app, f"build.{target}.bak"))
     except:
         pass
     print("Done.\n")
@@ -118,6 +124,13 @@ def clean_app(app):
 def build_app(app, device_type, with_profiling=False, no_networking=False, is_release=False):
     # To do: clean up if any of the flags changed since last build
     print("Building app '%s'" % app)
+    if not os.path.exists(os.path.join(app,"sdkconfig")):
+        target=device_type.replace("devkit", "").replace("-", "").strip()
+        if os.path.exists(os.path.join(app, f"sdkconfig.{target}.bak")):
+            os.rename(os.path.join(app, f"sdkconfig.{target}.bak"), os.path.join(app, "sdkconfig"))
+        if os.path.exists(os.path.join(app, f"build.{target}.bak")):
+            os.rename(os.path.join(app, f"build.{target}.bak"), os.path.join(app, "build"))
+
     args = [IDF_PY, "app"]
     args.append(f"-DRG_PROJECT_APP={app}")
     args.append(f"-DRG_PROJECT_VER={PROJECT_VER}")
@@ -211,7 +224,6 @@ try:
         print("=== Step: Cleaning ===\n")
         for app in apps:
             clean_app(app)
-
     if command in ["build", "build-fw", "build-img", "release", "run", "profile", "install"]:
         print("=== Step: Building ===\n")
         for app in apps:

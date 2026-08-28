@@ -1,5 +1,6 @@
 #include <rg_system.h>
 #include <rg_coplay.h>
+#include <rg_mic.h>
 #include <sys/time.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -174,6 +175,19 @@ static rg_gui_event_t coplay_client_cb(rg_gui_option_t *option, rg_gui_event_t e
     if (event == RG_DIALOG_ENTER)
     {
         rg_coplay_client_run();
+        return RG_DIALOG_REDRAW;
+    }
+    return RG_DIALOG_VOID;
+}
+#endif
+
+#ifdef RG_MIC_ENABLED
+static rg_gui_event_t mic_test_cb(rg_gui_option_t *option, rg_gui_event_t event)
+{
+    if (event == RG_DIALOG_ENTER)
+    {
+        rg_input_wait_for_key(RG_KEY_ANY, false, 1000);
+        rg_mic_test_run();
         return RG_DIALOG_REDRAW;
     }
     return RG_DIALOG_VOID;
@@ -470,6 +484,9 @@ static void about_handler(rg_gui_option_t *dest)
     *dest++ = (rg_gui_option_t){0, _("Update Retro-Go"), NULL, RG_DIALOG_FLAG_NORMAL, &updater_cb};
     #ifdef COPLAY_ENABLED
     *dest++ = (rg_gui_option_t){0, _("CoPlay Client"), NULL, RG_DIALOG_FLAG_NORMAL, &coplay_client_cb};
+    #endif
+    #ifdef RG_MIC_ENABLED
+    *dest++ = (rg_gui_option_t){0, _("Mic Test"), NULL, RG_DIALOG_FLAG_NORMAL, &mic_test_cb};
     #endif
     *dest++ = (rg_gui_option_t)RG_DIALOG_END;
 }

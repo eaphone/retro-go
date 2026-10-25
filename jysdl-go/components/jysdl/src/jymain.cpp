@@ -444,7 +444,8 @@ int Lua_Config(lua_State* pL, const char* filename)
     g_MAXCacheNum = getfield(pL, "MAXCacheNum");
     g_LoadFullS = getfield(pL, "LoadFullS");
     g_MP3 = getfield(pL, "MP3");
-    g_Zoom = (float)(getfield(pL, "Zoom") / 100.0);
+    int zoom = getfield(pL, "Zoom");
+    g_Zoom = zoom > 0 ? (float)(zoom / 100.0) : 1.0f;
     getfieldstr(pL, "MidSF2", g_MidSF2);
     getfieldstr(pL, "JYMain_Lua", g_MainLuaFile);
     getfieldstr(pL, "Softener", g_Softener);

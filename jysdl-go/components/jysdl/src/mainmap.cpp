@@ -1,4 +1,4 @@
-﻿
+
 //绘制主地图、场景地图和战斗地图
 //为加快速度，这些函数改为c中实现
 
@@ -680,16 +680,17 @@ int JY_DrawMMap(int x, int y, int Mypic)
                 picnum = JY_GetMMap(x + i1, y + j1, 0);
                 if (picnum > 0)
                 {
-                    JY_LoadPic(93, picnum, x1, y1, 0, 0);
+                    JY_LoadPic(0, picnum, x1, y1, 0, 0);
                 }
                 picnum = JY_GetMMap(x + i1, y + j1, 1);
                 if (picnum > 0)
                 {
-                    JY_LoadPic(93, picnum, x1, y1, 0, 0);
+                    JY_LoadPic(0, picnum, x1, y1, 0, 0);
                 }
             }
         }
     }
+
 
     for (i = 0; i < BuildNumber; i++)
     {
@@ -700,7 +701,7 @@ int JY_DrawMMap(int x, int y, int Mypic)
         picnum = Build[i].num;
         if (picnum > 0)
         {
-            JY_LoadPic(93, picnum, x1, y1, 0, 0);
+            JY_LoadPic(0, picnum, x1, y1, 0, 0);
         }
     }
 
@@ -1099,7 +1100,7 @@ int JY_DrawSMap(int sceneid, int x, int y, int xoff, int yoff, int Mypic)
                 int d0 = JY_GetS(sceneid, xx, yy, 0);
                 if (d0 > 0)
                 {
-                    JY_LoadPic(94, d0, x1, y1, 0, 0);    //地面
+                    JY_LoadPic(0, d0, x1, y1, 0, 0);    //地面
                 }
             }
         }
@@ -1128,24 +1129,24 @@ int JY_DrawSMap(int sceneid, int x, int y, int xoff, int yoff, int Mypic)
 
                 if (d1 > 0)
                 {
-                    JY_LoadPic(94, d1, x1, y1 - d4, 0, 0);    //建筑
+                    JY_LoadPic(0, d1, x1, y1 - d4, 0, 0);    //建筑
                 }
                 if (d2 > 0)
                 {
-                    JY_LoadPic(94, d2, x1, y1 - d5, 0, 0);    //空中
+                    JY_LoadPic(0, d2, x1, y1 - d5, 0, 0);    //空中
                 }
                 if (d3 >= 0)    // 事件
                 {
                     int picnum = JY_GetD(sceneid, d3, 7);
                     if (picnum > 0)
                     {
-                        JY_LoadPic(94, picnum, x1, y1 - d4, 0, 0);
+                        JY_LoadPic(0, picnum, x1, y1 - d4, 0, 0);
                     }
                 }
 
                 if ((i1 == -xoff) && (j1 == -yoff))    //主角
                 {
-                    JY_LoadPic(94, Mypic * 2, x1, y1 - d4, 0, 0);
+                    JY_LoadPic(0, Mypic * 2, x1, y1 - d4, 0, 0);
                 }
             }
         }

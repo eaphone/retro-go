@@ -280,16 +280,16 @@ typedef Uint32 SDL_Keymod;
 #define SDLK_ESCAPE  ((SDL_Keycode)'\033')
 #define SDLK_SPACE   ((SDL_Keycode)' ')
 
-#define SDLK_RIGHT ((SDL_Keycode)0x4000004F)
-#define SDLK_LEFT  ((SDL_Keycode)0x40000050)
-#define SDLK_DOWN  ((SDL_Keycode)0x40000051)
-#define SDLK_UP    ((SDL_Keycode)0x40000052)
+#define SDLK_RIGHT ((SDL_Keycode)275)
+#define SDLK_LEFT  ((SDL_Keycode)276)
+#define SDLK_DOWN  ((SDL_Keycode)274)
+#define SDLK_UP    ((SDL_Keycode)273)
 
-#define SDLK_F1 ((SDL_Keycode)0x4000003A)
-#define SDLK_F2 ((SDL_Keycode)0x4000003B)
-#define SDLK_F3 ((SDL_Keycode)0x4000003C)
-#define SDLK_F4 ((SDL_Keycode)0x4000003D)
-#define SDLK_F5 ((SDL_Keycode)0x4000003E)
+#define SDLK_F1 ((SDL_Keycode)282)
+#define SDLK_F2 ((SDL_Keycode)283)
+#define SDLK_F3 ((SDL_Keycode)284)
+#define SDLK_F4 ((SDL_Keycode)285)
+#define SDLK_F5 ((SDL_Keycode)286)
 
 typedef enum SDL_Scancode {
     SDL_SCANCODE_UNKNOWN = 0,

@@ -537,27 +537,33 @@ bool SDL_BlitSurface(SDL_Surface *src, const SDL_Rect *srcrect, SDL_Surface *dst
 /* ------------------------------------------------------------------ */
 static inline void blend_pixel(Uint32 *dst, Uint32 spx, SDL_BlendMode mode, Uint8 amod, Uint8 rmod, Uint8 gmod, Uint8 bmod)
 {
-    Uint8 sa = (Uint8)(((spx >> 24) & 0xFF) * amod / 255);
-    Uint8 sr = (Uint8)(((spx >> 16) & 0xFF) * rmod / 255);
-    Uint8 sg = (Uint8)(((spx >> 8) & 0xFF) * gmod / 255);
-    Uint8 sb = (Uint8)((spx & 0xFF) * bmod / 255);
+    /* Skip the /255 division when the mod is identity (the common case). */
+    Uint8 sa = (amod == 255) ? (Uint8)(spx >> 24) : (Uint8)(((spx >> 24) & 0xFF) * amod / 255);
+    Uint8 sr = (rmod == 255) ? (Uint8)(spx >> 16) : (Uint8)(((spx >> 16) & 0xFF) * rmod / 255);
+    Uint8 sg = (gmod == 255) ? (Uint8)(spx >> 8)  : (Uint8)(((spx >> 8) & 0xFF) * gmod / 255);
+    Uint8 sb = (bmod == 255) ? (Uint8)spx         : (Uint8)((spx & 0xFF) * bmod / 255);
+
+    if (mode == SDL_BLENDMODE_NONE) {
+        *dst = pack_argb(sr, sg, sb, sa);
+        return;
+    }
+
     Uint32 dpix = *dst;
     Uint8 da = (dpix >> 24) & 0xFF, dr = (dpix >> 16) & 0xFF, dg = (dpix >> 8) & 0xFF, db = dpix & 0xFF;
 
     if (mode == SDL_BLENDMODE_BLEND) {
         int na = 255 - sa;
-        Uint8 orr = (Uint8)((sr * sa + dr * na) / 255);
-        Uint8 og = (Uint8)((sg * sa + dg * na) / 255);
-        Uint8 ob = (Uint8)((sb * sa + db * na) / 255);
-        Uint8 oa = (Uint8)(sa + (da * na) / 255);
+        /* Fast alpha blend: /255 approximated with /256 (>>8). */
+        Uint8 orr = (Uint8)(dr + (((sr - dr) * sa) >> 8));
+        Uint8 og = (Uint8)(dg + (((sg - dg) * sa) >> 8));
+        Uint8 ob = (Uint8)(db + (((sb - db) * sa) >> 8));
+        Uint8 oa = (Uint8)(sa + ((da * na) >> 8));
         *dst = pack_argb(orr, og, ob, oa);
-    } else if (mode == SDL_BLENDMODE_ADD) {
-        Uint8 orr = sr + dr > 255 ? 255 : sr + dr;
-        Uint8 og = sg + dg > 255 ? 255 : sg + dg;
-        Uint8 ob = sb + db > 255 ? 255 : sb + db;
+    } else { /* SDL_BLENDMODE_ADD */
+        Uint8 orr = (sr + dr > 255) ? 255 : sr + dr;
+        Uint8 og = (sg + dg > 255) ? 255 : sg + dg;
+        Uint8 ob = (sb + db > 255) ? 255 : sb + db;
         *dst = pack_argb(orr, og, ob, 255);
-    } else {
-        *dst = pack_argb(sr, sg, sb, sa);
     }
 }
 
@@ -593,6 +599,15 @@ bool SDL_RenderTexture(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_F
 
     int dw = dx1 - dx0, dh = dy1 - dy0;
     if (dw <= 0 || dh <= 0) return SDL_TRUE;
+
+    /* Fast path: full-surface, 1:1, opaque, no color mods, no clip -> plain copy. */
+    if (!srcrect && !dstrect && texture->w == target->w && texture->h == target->h &&
+        texture->blend_mode == SDL_BLENDMODE_NONE && texture->alpha_mod == 255 &&
+        texture->r_mod == 255 && texture->g_mod == 255 && texture->b_mod == 255 &&
+        !renderer->has_clip) {
+        memcpy(target->pixels, texture->pixels, (size_t)texture->w * texture->h * 4);
+        return SDL_TRUE;
+    }
 
     float sx0 = s.x, sy0 = s.y;
     float scale_x = s.w / d.w;

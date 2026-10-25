@@ -1,4 +1,4 @@
-﻿
+
 
 // SDL 相关函数
 
@@ -545,52 +545,52 @@ int JY_GetKey(int* key, int* type, int* mx, int* my)
             axes[event.gaxis.axis] = event.gaxis.value;
             if ((axes[1] > Controller_DEAD_ZONE) && (axes[0] > Controller_DEAD_ZONE))    //右下
             {
-                Key1 = 1073741905;
-                Key2 = 1073741903;
+                Key1 = 274;
+                Key2 = 275;
             }
             else if ((axes[1] < -Controller_DEAD_ZONE) && (axes[0] > Controller_DEAD_ZONE))    //右上
             {
-                Key1 = 1073741906;
-                Key2 = 1073741903;
+                Key1 = 273;
+                Key2 = 275;
             }
             else if ((axes[1] > Controller_DEAD_ZONE) && (axes[0] < -Controller_DEAD_ZONE))    //左下
             {
-                Key1 = 1073741905;
-                Key2 = 1073741904;
+                Key1 = 274;
+                Key2 = 276;
             }
             else if ((axes[1] < -Controller_DEAD_ZONE) && (axes[0] < -Controller_DEAD_ZONE))    //左上
             {
-                Key1 = 1073741906;
-                Key2 = 1073741904;
+                Key1 = 273;
+                Key2 = 276;
             }
-            else if ((axes[1] > Controller_DEAD_ZONE) && ((Key1 != 1073741905) || (Key2 != 0)))    //下
+            else if ((axes[1] > Controller_DEAD_ZONE) && ((Key1 != 274) || (Key2 != 0)))    //下
             {
-                Key1 = 1073741905;
+                Key1 = 274;
                 Key2 = 0;
                 *key = SDLK_DOWN;
                 *type = 1;
                 break;
             }
-            else if ((axes[1] < -Controller_DEAD_ZONE) && ((Key1 != 1073741906) || (Key2 != 0)))    //上
+            else if ((axes[1] < -Controller_DEAD_ZONE) && ((Key1 != 273) || (Key2 != 0)))    //上
             {
-                Key1 = 1073741906;
+                Key1 = 273;
                 Key2 = 0;
                 *key = SDLK_UP;
                 *type = 1;
                 break;
             }
-            else if ((axes[0] < -Controller_DEAD_ZONE) && ((Key1 != 0) || (Key2 != 1073741904)))    //左
+            else if ((axes[0] < -Controller_DEAD_ZONE) && ((Key1 != 0) || (Key2 != 276)))    //左
             {
                 Key1 = 0;
-                Key2 = 1073741904;
+                Key2 = 276;
                 *key = SDLK_LEFT;
                 *type = 1;
                 break;
             }
-            else if ((axes[0] > Controller_DEAD_ZONE) && ((Key1 != 0) || (Key2 != 1073741903)))    //右
+            else if ((axes[0] > Controller_DEAD_ZONE) && ((Key1 != 0) || (Key2 != 275)))    //右
             {
                 Key1 = 0;
-                Key2 = 1073741903;
+                Key2 = 275;
                 *key = SDLK_RIGHT;
                 *type = 1;
                 break;
@@ -648,52 +648,52 @@ int JY_GetKey(int* key, int* type, int* mx, int* my)
         {
             if (event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP)
             {
-                if ((Key2 == 1073741903) || (Key2 == 1073741904))
+                if ((Key2 == 275) || (Key2 == 276))
                 {
-                    Key1 = 1073741906;
+                    Key1 = 273;
                 }
                 else
                 {
-                    Key1 = 1073741906;
+                    Key1 = 273;
                     Key2 = 0;
                     *key = SDLK_UP;
                 }
             }
             else if (event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN)
             {
-                if ((Key2 == 1073741903) || (Key2 == 1073741904))
+                if ((Key2 == 275) || (Key2 == 276))
                 {
-                    Key1 = 1073741905;
+                    Key1 = 274;
                 }
                 else
                 {
-                    Key1 = 1073741905;
+                    Key1 = 274;
                     Key2 = 0;
                     *key = SDLK_DOWN;
                 }
             }
             else if (event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT)
             {
-                if ((Key1 == 1073741905) || (Key1 == 1073741906))
+                if ((Key1 == 274) || (Key1 == 273))
                 {
-                    Key2 = 1073741904;
+                    Key2 = 276;
                 }
                 else
                 {
-                    Key2 = 1073741904;
+                    Key2 = 276;
                     Key1 = 0;
                     *key = SDLK_LEFT;
                 }
             }
             else if (event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT)
             {
-                if ((Key1 == 1073741905) || (Key1 == 1073741906))
+                if ((Key1 == 274) || (Key1 == 273))
                 {
-                    Key2 = 1073741903;
+                    Key2 = 275;
                 }
                 else
                 {
-                    Key2 = 1073741903;
+                    Key2 = 275;
                     Key1 = 0;
                     *key = SDLK_RIGHT;
                 }
@@ -752,47 +752,31 @@ int JY_GetKey(int* key, int* type, int* mx, int* my)
             }
             else if (event.gbutton.button == SDL_GAMEPAD_BUTTON_BACK)
             {
-                *key = SDLK_C;
+                *key = SDLK_N;
             }
             else if (event.gbutton.button == SDL_GAMEPAD_BUTTON_START)
             {
-                static int quit = 0;
-                if (quit == 0)
-                {
-                    quit = 1;
-                    lua_getglobal(pL_main, "Menu_Exit");
-                    lua_call(pL_main, 0, 1);
-                    r = (int)lua_tointeger(pL_main, -1);
-                    lua_pop(pL_main, 1);
-                    //if (MessageBox(NULL, "你确定要关闭游戏吗?", "系统提示", MB_ICONQUESTION | MB_OKCANCEL) == IDOK)
-                    if (r == 1)
-                    {
-                        ExitGame();    //释放游戏数据
-                        ExitSDL();     //退出SDL
-                        exit(1);
-                    }
-                    quit = 0;
-                }
+                *key = SDLK_Y;
             }
             if ((event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) && (event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT))
             {
-                Key1 = 1073741904;
-                Key2 = 1073741906;
+                Key1 = 276;
+                Key2 = 273;
             }
             else if ((event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_UP) && (event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT))
             {
-                Key1 = 1073741903;
-                Key2 = 1073741906;
+                Key1 = 275;
+                Key2 = 273;
             }
             else if ((event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) && (event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_LEFT))
             {
-                Key1 = 1073741904;
-                Key2 = 1073741905;
+                Key1 = 276;
+                Key2 = 274;
             }
             else if ((event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_DOWN) && (event.gbutton.button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT))
             {
-                Key1 = 1073741903;
-                Key2 = 1073741905;
+                Key1 = 275;
+                Key2 = 274;
             }
             *type = 1;
             break;

@@ -16,8 +16,27 @@ extern "C" {
 }
 extern "C" const rg_font_t font_FusionPixel;
 
+/* Direct-mapped glyph cache: the linear scan over ~3950 glyphs is by far the
+ * dominant cost of JY_DrawStr (the game redraws the same text every frame). */
+#define FUSION_GLYPH_CACHE_BITS 9
+#define FUSION_GLYPH_CACHE_SIZE (1 << FUSION_GLYPH_CACHE_BITS)
+
+static struct {
+    uint16_t code;
+    const rg_font_glyph_t *glyph;
+} fusion_glyph_cache[FUSION_GLYPH_CACHE_SIZE];
+
+static uint32_t fusion_hash(uint16_t code)
+{
+    return (code * 2654435761u) >> (32 - FUSION_GLYPH_CACHE_BITS);
+}
+
 static const rg_font_glyph_t *fusion_find_glyph(uint16_t codepoint)
 {
+    uint32_t slot = fusion_hash(codepoint);
+    if (fusion_glyph_cache[slot].code == codepoint)
+        return fusion_glyph_cache[slot].glyph;
+
     const uint8_t *ptr = font_FusionPixel.data;
     const rg_font_glyph_t *glyph = (const rg_font_glyph_t *)ptr;
     while (glyph->code && glyph->code != codepoint)
@@ -27,7 +46,10 @@ static const rg_font_glyph_t *fusion_find_glyph(uint16_t codepoint)
         ptr += sizeof(rg_font_glyph_t);
         glyph = (const rg_font_glyph_t *)ptr;
     }
-    return (glyph && glyph->code == codepoint) ? glyph : NULL;
+    const rg_font_glyph_t *found = (glyph && glyph->code == codepoint) ? glyph : NULL;
+    fusion_glyph_cache[slot].code = codepoint;
+    fusion_glyph_cache[slot].glyph = found;
+    return found;
 }
 
 static bool fusion_glyph_bit(const rg_font_glyph_t *g, int x, int y)

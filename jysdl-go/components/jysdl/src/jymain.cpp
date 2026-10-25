@@ -342,6 +342,18 @@ int Lua_Main(lua_State* pL_main)
         {
             break;
         }
+
+        // Raise the target frame rate: the game defaults to CC.Frame=50 (20 FPS),
+        // which feels sluggish. Target ~30 FPS (33ms). If the CPU can't keep up,
+        // the game simply runs at whatever rate it can (no negative delay).
+        lua_getglobal(pL_main, "CC");
+        if (lua_istable(pL_main, -1))
+        {
+            lua_pushinteger(pL_main, 33);
+            lua_setfield(pL_main, -2, "Frame");
+        }
+        lua_pop(pL_main, 1);
+
         //调用lua的主函数JY_Main
         lua_getglobal(pL_main, "JY_Main");
         result = lua_pcall(pL_main, 0, 1, 0);

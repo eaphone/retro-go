@@ -543,10 +543,12 @@ static inline void blend_pixel(Uint32 *dst, Uint32 spx, SDL_BlendMode mode, Uint
     Uint8 sg = (gmod == 255) ? (Uint8)(spx >> 8)  : (Uint8)(((spx >> 8) & 0xFF) * gmod / 255);
     Uint8 sb = (bmod == 255) ? (Uint8)spx         : (Uint8)((spx & 0xFF) * bmod / 255);
 
-    if (mode == SDL_BLENDMODE_NONE) {
+    if (mode == SDL_BLENDMODE_NONE || sa == 255) {
+        /* No blending needed: opaque source simply overwrites the destination. */
         *dst = pack_argb(sr, sg, sb, sa);
         return;
     }
+    if (sa == 0) return;  /* fully transparent: destination unchanged */
 
     Uint32 dpix = *dst;
     Uint8 da = (dpix >> 24) & 0xFF, dr = (dpix >> 16) & 0xFF, dg = (dpix >> 8) & 0xFF, db = dpix & 0xFF;
@@ -615,6 +617,27 @@ bool SDL_RenderTexture(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_F
 
     Uint32 *src = texture->pixels;
     Uint32 *dst = target->pixels;
+
+    /* Fast path: 1:1 blit (no scaling) — avoids per-pixel float math. */
+    if (s.w == d.w && s.h == d.h) {
+        int sx_off = (int)(s.x - d.x);
+        int sy_off = (int)(s.y - d.y);
+        for (int y = 0; y < dh; y++) {
+            int sy = y + dy0 + sy_off;
+            if (sy < 0) sy = 0;
+            if (sy >= texture->h) sy = texture->h - 1;
+            Uint32 *src_row = &src[sy * texture->w];
+            Uint32 *dst_row = &dst[(dy0 + y) * target->w + dx0];
+            for (int x = 0; x < dw; x++) {
+                int sxx = x + dx0 + sx_off;
+                if (sxx < 0) sxx = 0;
+                if (sxx >= texture->w) sxx = texture->w - 1;
+                blend_pixel(&dst_row[x], src_row[sxx], texture->blend_mode,
+                            texture->alpha_mod, texture->r_mod, texture->g_mod, texture->b_mod);
+            }
+        }
+        return SDL_TRUE;
+    }
 
     for (int y = 0; y < dh; y++) {
         int sy = (int)(sy0 + (dy0 + y - d.y) * scale_y);
@@ -700,6 +723,16 @@ bool SDL_RenderFillRect(SDL_Renderer *renderer, const SDL_FRect *rect)
 
     Uint32 spx = pack_argb(renderer->draw_r, renderer->draw_g, renderer->draw_b, renderer->draw_a);
     Uint32 *dst = target->pixels;
+
+    /* Fast path: fully opaque fill (none or blend) -> plain overwrite. */
+    if (renderer->draw_a == 255 && (renderer->draw_blend == SDL_BLENDMODE_NONE || renderer->draw_blend == SDL_BLENDMODE_BLEND)) {
+        for (int y = y0; y < y1; y++) {
+            Uint32 *row = &dst[y * target->w + x0];
+            for (int x = 0; x < x1 - x0; x++) row[x] = spx;
+        }
+        return SDL_TRUE;
+    }
+
     for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++)
             blend_pixel(&dst[y * target->w + x], spx, renderer->draw_blend, 255, 255, 255, 255);
@@ -743,18 +776,29 @@ bool SDL_RenderPresent(SDL_Renderer *renderer)
 
     uint16_t *dst = (uint16_t *)g_display->data;
     Uint32 *src = bb->pixels;
-    for (int y = 0; y < dh; y++) {
-        int sy = (int)((float)y * sh / dh);
-        if (sy >= sh) sy = sh - 1;
-        for (int x = 0; x < dw; x++) {
-            int sx = (int)((float)x * sw / dw);
-            if (sx >= sw) sx = sw - 1;
-            Uint32 px = src[sy * sw + sx];
+
+    if (sw == dw && sh == dh) {
+        /* 1:1 backbuffer -> display (the common case): no per-pixel scaling math. */
+        for (int i = 0; i < dw * dh; i++) {
+            Uint32 px = src[i];
             Uint8 r = (px >> 16) & 0xFF, g = (px >> 8) & 0xFF, b = px & 0xFF;
-            uint16_t c = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
-            dst[y * dw + x] = c;
+            dst[i] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+        }
+    } else {
+        for (int y = 0; y < dh; y++) {
+            int sy = (int)((float)y * sh / dh);
+            if (sy >= sh) sy = sh - 1;
+            for (int x = 0; x < dw; x++) {
+                int sx = (int)((float)x * sw / dw);
+                if (sx >= sw) sx = sw - 1;
+                Uint32 px = src[sy * sw + sx];
+                Uint8 r = (px >> 16) & 0xFF, g = (px >> 8) & 0xFF, b = px & 0xFF;
+                uint16_t c = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                dst[y * dw + x] = c;
+            }
         }
     }
+
     rg_display_submit(g_display, 0);
     return SDL_TRUE;
 }

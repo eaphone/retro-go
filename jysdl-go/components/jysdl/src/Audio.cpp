@@ -240,12 +240,9 @@ static void midi_render(float *out, int frames)
 static void audio_task(void *arg)
 {
     (void)arg;
-    uint32_t iter = 0;
 
     while (g_audio_running)
     {
-        int64_t t0 = rg_system_timer();
-
         // 1) Render MIDI into the float mix buffer.
         midi_render(g_fmix, AUDIO_FRAMES_PER_BUF);
 
@@ -285,12 +282,7 @@ static void audio_task(void *arg)
             g_smix[i] = clamp16((int32_t)s);
         }
 
-        int64_t t1 = rg_system_timer();  // render+mix time
-
         rg_audio_submit((rg_audio_frame_t *)g_smix, AUDIO_FRAMES_PER_BUF);
-
-        if (++iter % 256 == 0)
-            RG_LOGI("Audio: render=%lldus\n", (long long)(t1 - t0));
     }
 }
 

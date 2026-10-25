@@ -37,7 +37,7 @@ static void jy_determine_path(const char *romPath)
 void app_main(void)
 {
     const rg_config_t config = {
-        .sampleRate = 22050,
+        .sampleRate = 16000,
         .frameRate = 60,
         .storageRequired = true,
         .romRequired = false,

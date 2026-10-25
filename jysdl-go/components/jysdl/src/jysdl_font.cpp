@@ -14,7 +14,7 @@
 extern "C" {
 #include <rg_gui.h>
 }
-extern "C" const rg_font_t font_FusionPixel;
+extern "C" const rg_font_t font_JYGBK12;
 
 /* Direct-mapped glyph cache: the linear scan over ~3950 glyphs is by far the
  * dominant cost of JY_DrawStr (the game redraws the same text every frame). */
@@ -37,7 +37,7 @@ static const rg_font_glyph_t *fusion_find_glyph(uint16_t codepoint)
     if (fusion_glyph_cache[slot].code == codepoint)
         return fusion_glyph_cache[slot].glyph;
 
-    const uint8_t *ptr = font_FusionPixel.data;
+    const uint8_t *ptr = font_JYGBK12.data;
     const rg_font_glyph_t *glyph = (const rg_font_glyph_t *)ptr;
     while (glyph->code && glyph->code != codepoint)
     {
@@ -64,10 +64,16 @@ static void fusion_draw_glyph(const rg_font_glyph_t *g, int x, int y, int size, 
     if (!g || !dst || !dst->pixels)
         return;
 
-    int fh = font_FusionPixel.height;  /* 12 */
+    int fh = font_JYGBK12.height;  /* 12 */
     int out_w = (g->width * size + fh / 2) / fh;
-    int out_h = size;
+    int out_h = (g->height * size + fh / 2) / fh;
     if (out_w < 1) out_w = 1;
+    if (out_h < 1) out_h = 1;
+
+    int ox = (g->xOffset * size + fh / 2) / fh;
+    int oy = (g->yOffset * size + fh / 2) / fh;
+    if (oy + out_h > size)
+        oy = size - out_h;   /* clamp descenders to the baseline */
 
     for (int dy = 0; dy < out_h; dy++)
     {
@@ -77,7 +83,7 @@ static void fusion_draw_glyph(const rg_font_glyph_t *g, int x, int y, int size, 
             int sx = dx * g->width / out_w;
             if (!fusion_glyph_bit(g, sx, sy))
                 continue;
-            int px = x + dx, py = y + dy;
+            int px = x + ox + dx, py = y + oy + dy;
             if (px >= 0 && py >= 0 && px < dst->w && py < dst->h)
                 dst->pixels[py * dst->w + px] = color;
         }
@@ -132,8 +138,9 @@ int JY_DrawStr(int x, int y, const char *str, int color, int size, const char *f
     {
         if (u[i] == 0)
             break;
-        int advance = (u[i] < 128) ? ((size / 2) > 0 ? (size / 2) : size) : size;
-        const rg_font_glyph_t *g = fusion_find_glyph(u[i]);
+        Uint16 ch = JY_TradToSimp_Char(u[i]);
+        int advance = (ch < 128) ? ((size / 2) > 0 ? (size / 2) : size) : size;
+        const rg_font_glyph_t *g = fusion_find_glyph(ch);
         if (g)
         {
             fusion_draw_glyph(g, pen_x + 1, y + 1, size, shadow);

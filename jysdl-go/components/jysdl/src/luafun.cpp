@@ -1,4 +1,4 @@
-﻿#include "ZipFile.h"
+#include "ZipFile.h"
 #include "charset.h"
 #include "jymain.h"
 #include "mainmap.h"
@@ -103,7 +103,7 @@ int HAPI_EnableKeyRepeat(lua_State* pL)
 {
     int delay = (int)lua_tonumber(pL, 1);
     int interval = (int)lua_tonumber(pL, 2);
-    //SDL_EnableKeyRepeat(delay,interval);
+    SDL_EnableKeyRepeat(delay, interval);
     return 0;
 }
 

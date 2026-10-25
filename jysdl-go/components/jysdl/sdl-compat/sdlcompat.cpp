@@ -840,11 +840,34 @@ static const struct { Uint32 rg; Uint8 sdl; } g_button_map[] = {
     { RG_KEY_R,      SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER },
 };
 
+/* Key repeat (SDL_EnableKeyRepeat) for held gamepad buttons. */
+static int g_key_repeat_delay = 250;
+static int g_key_repeat_interval = 30;
+static Uint64 g_key_down_time[sizeof(g_button_map) / sizeof(g_button_map[0])];
+static Uint64 g_key_last_repeat[sizeof(g_button_map) / sizeof(g_button_map[0])];
+
+void SDL_EnableKeyRepeat(int delay, int interval)
+{
+    /* The game requests 30/30ms (KeyRepeatDelay/KeyRePeatInterval), which is
+     * far too fast for menu navigation on this hardware. Clamp to comfortable
+     * minimums. delay==0 keeps repeat off (the game uses interval=0 for that). */
+    if (delay > 0)
+    {
+        if (delay < 250) delay = 250;
+        /* The game re-enables with interval=0 due to a config typo
+         * (KeyRepeatInterval vs KeyRePeatInterval); use a sane default. */
+        if (interval <= 0) interval = 100;
+        if (interval < 100) interval = 100;
+    }
+    g_key_repeat_delay = delay;
+    g_key_repeat_interval = interval;
+}
+
 static void synthesize_gamepad_events(void)
 {
     Uint32 buttons = rg_input_read_gamepad();
     Uint32 changed = g_last_buttons ^ buttons;
-    if (!changed) return;
+    Uint64 now = SDL_GetTicks();
 
     /* Handle retro-go system menu on MENU/OPTION press. */
     if (changed & RG_KEY_MENU && (buttons & RG_KEY_MENU)) {
@@ -858,13 +881,18 @@ static void synthesize_gamepad_events(void)
         return;
     }
 
-    for (size_t i = 0; i < sizeof(g_button_map) / sizeof(g_button_map[0]); i++) {
-        if (changed & g_button_map[i].rg) {
+    const size_t nbuttons = sizeof(g_button_map) / sizeof(g_button_map[0]);
+    for (size_t i = 0; i < nbuttons; i++) {
+        Uint32 btn = g_button_map[i].rg;
+
+        if (changed & btn) {
             SDL_Event e;
             memset(&e, 0, sizeof(e));
-            if (buttons & g_button_map[i].rg) {
+            if (buttons & btn) {
                 e.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
                 e.gbutton.down = true;
+                g_key_down_time[i] = now;
+                g_key_last_repeat[i] = now;
             } else {
                 e.type = SDL_EVENT_GAMEPAD_BUTTON_UP;
                 e.gbutton.down = false;
@@ -872,6 +900,19 @@ static void synthesize_gamepad_events(void)
             e.gbutton.which = 0;
             e.gbutton.button = g_button_map[i].sdl;
             SDL_PushEvent(&e);
+        }
+        else if ((buttons & btn) && g_key_repeat_interval > 0 &&
+                 now - g_key_down_time[i] >= (Uint64)g_key_repeat_delay &&
+                 now - g_key_last_repeat[i] >= (Uint64)g_key_repeat_interval)
+        {
+            SDL_Event e;
+            memset(&e, 0, sizeof(e));
+            e.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+            e.gbutton.down = true;
+            e.gbutton.which = 0;
+            e.gbutton.button = g_button_map[i].sdl;
+            SDL_PushEvent(&e);
+            g_key_last_repeat[i] = now;
         }
     }
     g_last_buttons = buttons;

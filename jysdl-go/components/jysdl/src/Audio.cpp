@@ -243,6 +243,10 @@ static void audio_task(void *arg)
 
     while (g_audio_running)
     {
+        // Protect the shared MIDI + WAV state while mixing (PlayMIDI/PlayWAV
+        // from the main thread touch the same state).
+        rg_mutex_take(g_audio_lock, 100);
+
         // 1) Render MIDI into the float mix buffer.
         midi_render(g_fmix, AUDIO_FRAMES_PER_BUF);
 
@@ -252,7 +256,6 @@ static void audio_task(void *arg)
             g_fmix[i] *= music_scale;
 
         // 2) Mix WAV channels on top.
-        rg_mutex_take(g_audio_lock, 100);
         for (int ch = 0; ch < MAX_WAV_CHANNELS; ch++)
         {
             if (!g_channels[ch].active) continue;
@@ -272,6 +275,7 @@ static void audio_task(void *arg)
             }
             g_channels[ch].pos = pos;
         }
+
         rg_mutex_give(g_audio_lock);
 
         // 3) Convert float -> int16 with clamping.
@@ -286,15 +290,10 @@ static void audio_task(void *arg)
     }
 }
 
-void Audio::init()
+static void load_soundfont(void)
 {
-    if (g_audio_running) return;
+    if (g_font) return;
 
-    memset(g_channels, 0, sizeof(g_channels));
-    g_audio_lock = rg_mutex_create();
-    g_audio_running = true;
-
-    // Load the SoundFont for MIDI (may not exist -> music stays silent).
     char sf2[RG_PATH_MAX + 1];
     snprintf(sf2, sizeof(sf2), "%ssound/font.sf2", JY_CurrentPath);
     g_font = tsf_load_filename(sf2);
@@ -313,9 +312,21 @@ void Audio::init()
     {
         RG_LOGW("Audio: SoundFont not found, music disabled\n");
     }
+}
+
+void Audio::init()
+{
+    if (g_audio_running) return;
+
+    memset(g_channels, 0, sizeof(g_channels));
+    g_audio_lock = rg_mutex_create();
+    g_audio_running = true;
+
+    // SoundFont is loaded lazily on the first PlayMIDI (it's 5.7 MB; deferring
+    // it leaves room for the 10 MB TTF font at startup).
     RG_LOGI("Audio: sample_rate=%d\n", rg_audio_get_sample_rate());
 
-    rg_task_create("jysdl_audio", audio_task, NULL, 8192, 1, RG_TASK_PRIORITY_2, 1);
+    rg_task_create("jysdl_audio", audio_task, NULL, 16384, 1, RG_TASK_PRIORITY_2, 1);
 }
 
 void Audio::quit()
@@ -376,7 +387,11 @@ int Audio::PlayMIDI(const char *filename)
 
     rg_mutex_give(g_audio_lock);
 
-    if (!filename || !filename[0] || !g_font)
+    if (!filename || !filename[0])
+        return -1;
+
+    load_soundfont();   // lazy load (5.7 MB) on first music playback
+    if (!g_font)
         return -1;
 
     tml_message *list = tml_load_filename(filename);
@@ -394,21 +409,27 @@ int Audio::PlayMIDI(const char *filename)
 
 int Audio::StopMIDI()
 {
+    rg_mutex_take(g_audio_lock, 100);
     g_midi_playing = false;
     midi_stop_notes();
+    rg_mutex_give(g_audio_lock);
     return 0;
 }
 
 int Audio::PausedMIDI()
 {
+    rg_mutex_take(g_audio_lock, 100);
     g_midi_playing = false;
+    rg_mutex_give(g_audio_lock);
     return 0;
 }
 
 int Audio::ResumeMIDI()
 {
+    rg_mutex_take(g_audio_lock, 100);
     if (g_midi_next)
         g_midi_playing = true;
+    rg_mutex_give(g_audio_lock);
     return 0;
 }
 

@@ -130,6 +130,12 @@ static int LoadMMap_Sub(const char* filename, Sint16** p)
         *p = (Sint16*)malloc(M_XMax * M_YMax * 2);
     }
 
+    if (*p == NULL)
+    {
+        JY_Error("LoadMMap_Sub: out of memory (%d bytes)", M_XMax * M_YMax * 2);
+        return 1;
+    }
+
     if ((fp = fopen(filename, "rb")) == NULL)
     {
         JY_Error("file not open ---%s", filename);

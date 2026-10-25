@@ -573,6 +573,7 @@ void SDL_SetGamepadEventsEnabled(bool enabled);
 
 const Uint8 *SDL_GetKeyboardState(int *numkeys);
 SDL_Scancode SDL_GetScancodeFromKey(SDL_Keycode key, SDL_Keymod *modstate);
+void SDL_EnableKeyRepeat(int delay, int interval);
 
 SDL_JoystickID *SDL_GetJoysticks(int *count);
 bool SDL_IsGamepad(SDL_JoystickID instance_id);

@@ -22,13 +22,20 @@ static char jy_path[RG_PATH_MAX + 1] = RG_BASE_PATH_ROMS "/jy/";
 
 static void jy_determine_path(const char *romPath)
 {
-    /* Use the directory of the selected .lua file as the game root. */
+    /* The selected .lua stub lives in roms/dos root and the game data in a
+       folder named after it, e.g. /sd/roms/dos/jinyong.lua -> /sd/roms/dos/jinyong/ */
     if (romPath && romPath[0]) {
         const char *slash = strrchr(romPath, '/');
-        size_t dirlen = slash ? (size_t)(slash - romPath) + 1 : 0;
-        if (dirlen > 0 && dirlen < sizeof(jy_path)) {
-            memcpy(jy_path, romPath, dirlen);
-            jy_path[dirlen] = '\0';
+        const char *dot = strrchr(romPath, '.');
+        if (slash && dot && dot > slash) {
+            size_t dirlen = (size_t)(slash - romPath) + 1;       // "/sd/roms/dos/"
+            size_t namelen = (size_t)(dot - slash - 1);          // "jinyong"
+            if (dirlen + namelen + 2 < sizeof(jy_path)) {
+                memcpy(jy_path, romPath, dirlen);                 // dir
+                memcpy(jy_path + dirlen, slash + 1, namelen);     // basename
+                jy_path[dirlen + namelen] = '/';
+                jy_path[dirlen + namelen + 1] = '\0';
+            }
         }
     }
     jysdl_set_current_path(jy_path);

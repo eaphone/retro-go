@@ -136,6 +136,14 @@ static void application_start(retro_file_t *file, int load_state)
     char *part = strdup(file->app->partition);
     char *name = strdup(file->app->short_name);
     char *path = strdup(get_file_path(file));
+
+    // .lua stubs launch the 金庸群侠传 port (jysdl-go) instead of the DOS emulator.
+    if (rg_extension_match(file->name, "lua"))
+    {
+        free(part);
+        part = strdup("jysdl-go");
+    }
+
     int flags = (gui.startup_mode ? RG_BOOT_ONCE : 0) | (load_state != -1 ? RG_BOOT_RESUME : 0);
     bookmark_add(BOOK_TYPE_RECENT, file); // This could relocate *file, but we no longer need it
     rg_system_switch_app(part, name, path, load_state, flags);
@@ -704,13 +712,14 @@ void applications_init(void)
     application("DOOM", "doom", "wad zip", "prboom-go", 0);
     application("MSX", "msx", "rom mx1 mx2 dsk", "fmsx", 0);
     application("Video Player", "vp", "mp4 avi mkv raw", "video-player", 0);
-    // IBM PC/XT/AT emulator (tiny386)
-    application("MS-Dos", "dos", "img", "tiny386-go", 0);
-    // 金庸群侠传 (jysdl-bh port): directory-based game, only scan top level so the tab shows config.lua
+    // IBM PC/XT/AT emulator (tiny386) + 金庸群侠传 (jysdl-go) via .lua stubs.
+    // The .lua stub lives in roms/dos root and its game data in a same-named
+    // subfolder, so scan top-level only (otherwise the game's own .lua files
+    // would show up as selectable entries).
     {
-        retro_app_t *jy_app = application("Jin Yong Hero", "jy", "lua", "jysdl-go", 0);
-        if (jy_app)
-            jy_app->scan_recursive = false;
+        retro_app_t *dos_app = application("MS-Dos", "dos", "img lua", "tiny386-go", 0);
+        if (dos_app)
+            dos_app->scan_recursive = false;
     }
 
     // Special app to bootstrap native esp32 binaries from the SD card

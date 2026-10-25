@@ -41,6 +41,7 @@ typedef struct retro_app_s
     size_t files_capacity;
     size_t files_count;
     rg_bucket_t *filenames;
+    bool scan_recursive;
     bool use_crc_covers;
     bool initialized;
     bool available;

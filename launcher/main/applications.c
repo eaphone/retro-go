@@ -112,7 +112,7 @@ static void application_init(retro_app_t *app)
     rg_storage_mkdir(app->paths.saves);
     rg_storage_mkdir(app->paths.roms);
 
-    rg_storage_scandir(app->paths.roms, scan_folder_cb, app, RG_SCANDIR_RECURSIVE);
+    rg_storage_scandir(app->paths.roms, scan_folder_cb, app, app->scan_recursive ? RG_SCANDIR_RECURSIVE : 0);
     rg_storage_scandir(app->paths.saves, scan_saves_cb, app, RG_SCANDIR_RECURSIVE);
     // rg_storage_scandir(app->paths.covers, scan_folder_cb3, app, RG_SCANDIR_RECURSIVE);
 
@@ -653,14 +653,14 @@ void application_show_file_menu(retro_file_t *file, bool advanced)
     // gui_redraw();
 }
 
-static void application(const char *desc, const char *name, const char *exts, const char *part, uint16_t crc_offset)
+static retro_app_t *application(const char *desc, const char *name, const char *exts, const char *part, uint16_t crc_offset)
 {
     RG_ASSERT_ARG(desc && name && exts && part);
 
     if (!rg_system_have_app(part))
     {
         RG_LOGI("Application '%s' (%s) not present, skipping", desc, part);
-        return;
+        return NULL;
     }
 
     retro_app_t *app = calloc(1, sizeof(retro_app_t));
@@ -678,8 +678,10 @@ static void application(const char *desc, const char *name, const char *exts, co
     app->files_capacity = 100;
     app->filenames = rg_bucket_create(4096);
     app->crc_offset = crc_offset;
+    app->scan_recursive = true;
 
     gui_add_tab(app->short_name, app->description, app, event_handler);
+    return app;
 }
 
 void applications_init(void)
@@ -704,6 +706,12 @@ void applications_init(void)
     application("Video Player", "vp", "mp4 avi mkv raw", "video-player", 0);
     // IBM PC/XT/AT emulator (tiny386)
     application("MS-Dos", "dos", "img", "tiny386-go", 0);
+    // 金庸群侠传 (jysdl-bh port): directory-based game, only scan top level so the tab shows config.lua
+    {
+        retro_app_t *jy_app = application("Jin Yong Hero", "jy", "lua", "jysdl-go", 0);
+        if (jy_app)
+            jy_app->scan_recursive = false;
+    }
 
     // Special app to bootstrap native esp32 binaries from the SD card
     // application("Bootstrap", "apps", "bin elf", "bootstrap", 0);

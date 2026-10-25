@@ -1,0 +1,1184 @@
+
+// 读取idx/grp的贴图文件。
+// 为提高速度，采用缓存方式读取。把idx/grp读入内存，然后定义若干个缓存表面
+// 经常访问的pic放在缓存表面中
+
+#include "piccache.h"
+#include "jymain.h"
+#include "sdlfun.h"
+
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <dirent.h>
+
+bool IsSupportedImageExtension(const std::string& extension)
+{
+    return extension == "png" || extension == "webp";
+}
+
+std::string GetLowerExtension(const std::string& filename)
+{
+    std::string extension;
+    size_t dot = filename.find_last_of('.');
+    size_t slash = filename.find_last_of("/\\");
+    if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+    {
+        extension = filename.substr(dot + 1);
+    }
+    for (char& character : extension)
+    {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+    return extension;
+}
+
+std::string NormalizeImageExtension(const char* suffix)
+{
+    std::string extension = suffix ? suffix : "";
+    if (!extension.empty() && extension.front() == '.')
+    {
+        extension.erase(0, 1);
+    }
+    for (char& character : extension)
+    {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+    return extension;
+}
+
+bool GetImageNumber(const std::string& filename, int& image_number)
+{
+    size_t slash = filename.find_last_of("/\\");
+    std::string base = (slash == std::string::npos) ? filename : filename.substr(slash + 1);
+    size_t dot = base.find_last_of('.');
+    std::string stem = (dot == std::string::npos) ? base : base.substr(0, dot);
+
+    size_t end = 0;
+    while (end < stem.size() && std::isdigit(static_cast<unsigned char>(stem[end])))
+    {
+        ++end;
+    }
+    if (end == 0 || (end < stem.size() && stem[end] != '_'))
+    {
+        return false;
+    }
+
+    char* endptr = nullptr;
+    long value = std::strtol(stem.c_str(), &endptr, 10);
+    if (endptr == stem.c_str())
+    {
+        return false;
+    }
+    image_number = static_cast<int>(value);
+    return image_number >= 0;
+}
+
+void CollectImageInfo(const std::vector<std::string>& files, const char* requested_suffix,
+    int& max_image_number, std::string& image_suffix, bool& mixed_image_formats)
+{
+    const std::string requested_extension = NormalizeImageExtension(requested_suffix);
+    bool requested_extension_found = false;
+    max_image_number = -1;
+    mixed_image_formats = false;
+
+    for (const std::string& filename : files)
+    {
+        const std::string extension = GetLowerExtension(filename);
+        if (!IsSupportedImageExtension(extension))
+        {
+            continue;
+        }
+
+        int image_number = -1;
+        if (!GetImageNumber(filename, image_number))
+        {
+            continue;
+        }
+
+        if (!requested_extension.empty() && extension == requested_extension)
+        {
+            requested_extension_found = true;
+        }
+        if (image_suffix.empty())
+        {
+            image_suffix = extension;
+        }
+        else if (image_suffix != extension)
+        {
+            mixed_image_formats = true;
+        }
+        max_image_number = (std::max)(max_image_number, image_number);
+    }
+
+    if (requested_extension_found && !mixed_image_formats)
+    {
+        image_suffix = requested_extension;
+    }
+}
+
+SDL_IOStream* OpenImageIO(const PicFileCache& cache, int image_number, int frame,
+    std::string& content)
+{
+    char filename[64];
+    if (frame < 0)
+    {
+        snprintf(filename, sizeof(filename), "%d.%s", image_number, cache.suffix);
+    }
+    else
+    {
+        snprintf(filename, sizeof(filename), "%d_%d.%s", image_number, frame, cache.suffix);
+    }
+
+    if (cache.zip_file.opened())
+    {
+        content = cache.zip_file.readFile(filename);
+        if (content.empty())
+        {
+            return NULL;
+        }
+        return SDL_IOFromMem(content.data(), content.size());
+    }
+
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/%s", cache.path, filename);
+    return SDL_IOFromFile(path, "rb");
+}
+
+bool ParseIndexTextLine(const std::string& line, int& image_number, int& x_offset, int& y_offset)
+{
+    int* values[] = { &image_number, &x_offset, &y_offset };
+    int count = 0;
+    const char* cursor = line.c_str();
+    while (*cursor && count < 3)
+    {
+        char* end = nullptr;
+        const long value = std::strtol(cursor, &end, 10);
+        if (end != cursor)
+        {
+            *values[count++] = static_cast<int>(value);
+            cursor = end;
+        }
+        else
+        {
+            ++cursor;
+        }
+    }
+    return count == 3;
+}
+
+EXT_RAM_BSS_ATTR PicFileCache pic_file[PIC_FILE_NUM];
+//std::forward_list<CacheNode*> pic_cache;     //pic_cache链表
+Uint32 m_color32[256];    // 256调色板
+
+//int CacheFailNum = 0;
+
+void CacheNode::toTexture()
+{
+    if (s)
+    {
+        if (t == NULL)
+        {
+            t = SDL_CreateTextureFromSurface(g_Renderer, s);
+            tt[0] = t;
+            SDL_DestroySurface(s);
+            s = NULL;
+        }
+    }
+}
+
+// 初始化Cache数据。游戏开始时调用
+int Init_Cache()
+{
+    int i;
+    for (i = 0; i < PIC_FILE_NUM; i++)
+    {
+        pic_file[i].num = 0;
+        pic_file[i].idx = NULL;
+        pic_file[i].grp = NULL;
+        pic_file[i].fp = NULL;
+        //pic_file[i].pcache = NULL;
+    }
+    return 0;
+}
+
+// 初始化贴图cache信息
+// PalletteFilename 为256调色板文件。第一次调用时载入
+//                  为空字符串则表示重新清空贴图cache信息。在主地图/场景/战斗切换时调用
+
+int JY_PicInit(const char* PalletteFilename)
+{
+    struct list_head *pos, *p;
+    int i;
+
+    LoadPalette(PalletteFilename);    //载入调色板
+
+    //如果链表不为空，删除全部链表
+    //for (auto& c : pic_cache)
+    //{
+    //    delete c;
+    //}
+    //pic_cache.clear();
+
+    for (i = 0; i < PIC_FILE_NUM; i++)
+    {
+        pic_file[i].num = 0;
+        SafeFree(pic_file[i].idx);
+        SafeFree(pic_file[i].grp);
+
+        for (auto& p : pic_file[i].pcache)
+        {
+            delete p;
+        }
+        pic_file[i].pcache.clear();
+        //SafeFree(pic_file[i].pcache);
+        if (pic_file[i].fp)
+        {
+            fclose(pic_file[i].fp);
+            pic_file[i].fp = NULL;
+        }
+    }
+  
+    return 0;
+}
+
+// 加载文件信息
+// filename 文件名
+// id  0 - PIC_FILE_NUM-1
+int JY_PicLoadFile(const char* idxfilename, const char* grpfilename, int id, int width, int height)
+{
+    int i;
+    struct CacheNode* tmpcache;
+    FILE* fp;
+
+    if (id < 0 || id >= PIC_FILE_NUM)    // id超出范围
+    {
+        return 1;
+    }
+
+    if (pic_file[id].pcache.size())    //释放当前文件占用的空间，并清理cache
+    {
+        int i;
+        for (i = 0; i < pic_file[id].num; i++)    //循环全部贴图，
+        {
+            tmpcache = pic_file[id].pcache[i];
+            if (tmpcache)    // 该贴图有缓存则删除
+            {
+                delete tmpcache;
+            }
+        }
+        //SafeFree(pic_file[id].pcache);
+    }
+    SafeFree(pic_file[id].idx);
+    SafeFree(pic_file[id].grp);
+    if (pic_file[id].fp)
+    {
+        fclose(pic_file[id].fp);
+        pic_file[id].fp = NULL;
+    }
+
+    // 读取idx文件
+
+    pic_file[id].num = FileLength(idxfilename) / 4;    //idx 贴图个数
+    pic_file[id].idx = (int*)malloc((pic_file[id].num + 1) * 4);
+    if (pic_file[id].idx == NULL)
+    {
+        JY_Error("JY_PicLoadFile: cannot malloc idx memory!\n");
+        return 1;
+    }
+    //读取贴图idx文件
+    if ((fp = fopen(idxfilename, "rb")) == NULL)
+    {
+        JY_Error("JY_PicLoadFile: idx file not open ---%s", idxfilename);
+        return 1;
+    }
+
+    fread(&pic_file[id].idx[1], 4, pic_file[id].num, fp);
+    fclose(fp);
+
+    pic_file[id].idx[0] = 0;
+
+    //读取grp文件
+    pic_file[id].filelength = FileLength(grpfilename);
+
+    //读取贴图grp文件
+    if ((fp = fopen(grpfilename, "rb")) == NULL)
+    {
+        JY_Error("JY_PicLoadFile: grp file not open ---%s", grpfilename);
+        return 1;
+    }
+    if (true)    //grp文件读入内存
+    {
+        pic_file[id].grp = (unsigned char*)malloc(pic_file[id].filelength);
+        if (pic_file[id].grp == NULL)
+        {
+            JY_Error("JY_PicLoadFile: cannot malloc grp memory!\n");
+            return 1;
+        }
+        fread(pic_file[id].grp, 1, pic_file[id].filelength, fp);
+        fclose(fp);
+    }
+    else
+    {
+        pic_file[id].fp = fp;
+    }
+
+    pic_file[id].pcache.resize(pic_file[id].num);
+    if (pic_file[id].pcache.size() == 0)
+    {
+        JY_Error("JY_PicLoadFile: cannot malloc pcache memory!\n");
+        return 1;
+    }
+
+    for (i = 0; i < pic_file[id].num; i++)
+    {
+        pic_file[id].pcache[i] = NULL;
+    }
+
+    if (height == 0)
+    {
+        height = width;
+    }
+
+    if (width > 0)
+    {
+        pic_file[id].width = width;
+        pic_file[id].height = height;
+    }
+    pic_file[id].type = 0;
+    return 0;
+}
+
+// 加载并显示贴图
+// fileid        贴图文件id
+// picid     贴图编号
+// x,y       显示位置
+//  flag 不同bit代表不同含义，缺省均为0
+//  B0    0 考虑偏移xoff，yoff。=1 不考虑偏移量
+//  B1    0     , 1 与背景alpla 混合显示, value 为alpha值(0-255), 0表示透明
+//  B2            1 全黑
+//  B3            1 全白
+//  value 按照flag定义，为alpha值，
+
+int JY_LoadPic(int fileid, int picid, int x, int y, int flag, int value, int color, int width, int height, double rotate, SDL_FlipMode reversal, int percent)
+{
+    struct CacheNode *newcache, *tmpcache;
+    int xnew, ynew;
+    SDL_Surface* tmpsur;
+
+    if (pic_file[fileid].type == 1)
+    {
+        JY_LoadPNG(fileid, picid, x, y, flag, value, percent);
+        return 0;
+    }
+
+    picid = picid / 2;
+
+    if (fileid < 0 || fileid >= PIC_FILE_NUM || picid < 0 || picid >= pic_file[fileid].num)    // 参数错误
+    {
+        return 1;
+    }
+
+    if (pic_file[fileid].pcache[picid] == NULL)    //当前贴图没有加载
+    {
+        //生成cache数据
+        newcache = new CacheNode();
+        if (newcache == NULL)
+        {
+            JY_Error("JY_LoadPic: cannot malloc newcache memory!\n");
+            return 1;
+        }
+
+        newcache->id = picid;
+        newcache->fileid = fileid;
+        LoadPic(fileid, picid, newcache);
+        ////指定宽度和高度
+        //if (newcache->s != NULL && pic_file[fileid].width > 0 && pic_file[fileid].height > 0
+        //    && pic_file[fileid].width != newcache->s->w && pic_file[fileid].height != newcache->s->h)
+        //{
+        //    double zoomx = (double)pic_file[fileid].width / newcache->s->w;
+        //    double zoomy = (double)pic_file[fileid].height / newcache->s->h;
+
+        //    if (zoomx < zoomy)
+        //    {
+        //        zoomy = zoomx;
+        //    }
+        //    else
+        //    {
+        //        zoomx = zoomy;
+        //    }
+
+        //    tmpsur = newcache->s;
+
+        //    newcache->s = zoomSurface(tmpsur, zoomx, zoomy, SMOOTHING_OFF);
+
+        //    newcache->xoff = (int)(zoomx * newcache->xoff);
+        //    newcache->yoff = (int)(zoomy * newcache->yoff);
+        //    //SDL_SetSurfaceColorKey(newcache->s, true, ConvertColor(g_MaskColor32));  //透明色
+        //    SDL_DestroySurface(tmpsur);
+        //}
+        pic_file[fileid].pcache[picid] = newcache;
+    }
+    else
+    {
+        newcache = pic_file[fileid].pcache[picid];
+    }
+
+    if (newcache->t == NULL)    //贴图为空，直接退出
+    {
+        return 1;
+    }
+
+    if (flag & 0x00000001)
+    {
+        xnew = x;
+        ynew = y;
+    }
+    else
+    {
+        if (width > 0 && height > 0)    //太极猫调整：宽高自定义，贴图的位置调整
+        {
+            xnew = x - newcache->xoff * width / newcache->w;
+            ynew = y - newcache->yoff * height / newcache->h;
+        }
+        else if (width > 0 && height <= 0)    //太极猫调整：宽自定义，贴图的位置调整
+        {
+            xnew = x - newcache->xoff * width / newcache->w;
+            ynew = y - newcache->yoff * width / newcache->w;
+        }
+        else if (width <= 0 && height > 0)    //太极猫调整：比利自定义，贴图的位置调整
+        {
+            float bl = height / 100.0;
+            width = newcache->w * bl;
+            height = newcache->h * bl;
+            xnew = x - newcache->xoff * bl;
+            ynew = y - newcache->yoff * bl;
+        }
+        else if (width == 0 && height == 0)    //太极猫调整：宽高都为0则根据zoom值改变贴图大小
+        {
+            width = newcache->w * g_Zoom;
+            height = newcache->h * g_Zoom;
+            xnew = x - newcache->xoff * g_Zoom;
+            ynew = y - newcache->yoff * g_Zoom;
+        }
+        else
+        {
+            xnew = x - newcache->xoff;
+            ynew = y - newcache->yoff;
+        }
+    }
+    RenderTexture(newcache->t, xnew, ynew, flag, value, color, width, height, rotate, reversal, percent);
+    return 0;
+}
+
+// 加载贴图到表面
+int LoadPic(int fileid, int picid, struct CacheNode* cache)
+{
+    SDL_IOStream* fp_SDL;
+    int id1, id2;
+    int datalong;
+    unsigned char *p, *data;
+
+    SDL_Surface *tmpsurf = NULL, *tmpsur;
+
+    if (pic_file[fileid].idx == NULL)
+    {
+        JY_Error("LoadPic: fileid %d can not load?\n", fileid);
+        return 1;
+    }
+    id1 = pic_file[fileid].idx[picid];
+    id2 = pic_file[fileid].idx[picid + 1];
+
+    // 处理一些特殊情况，按照修改器中的代码
+    if (id1 < 0)
+    {
+        datalong = 0;
+    }
+
+    if (id2 > pic_file[fileid].filelength)
+    {
+        id2 = pic_file[fileid].filelength;
+    }
+
+    datalong = id2 - id1;
+
+    if (datalong > 0)
+    {
+        //读取贴图grp文件，得到原始数据
+        if (true)    //有预读，从内存中读数据
+        {
+            data = pic_file[fileid].grp + id1;
+            p = NULL;
+        }
+        else    //没有预读，从文件中读取
+        {
+            fseek(pic_file[fileid].fp, id1, SEEK_SET);
+            data = (unsigned char*)malloc(datalong);
+            p = data;
+            fread(data, 1, datalong, pic_file[fileid].fp);
+        }
+
+        fp_SDL = SDL_IOFromMem(data, datalong);
+        if (IMG_isPNG(fp_SDL) == 0)
+        {
+            int w, h;
+            w = *(short*)data;
+            h = *(short*)(data + 2);
+            cache->xoff = *(short*)(data + 4);
+            cache->yoff = *(short*)(data + 6);
+            cache->w = w;
+            cache->h = h;
+            cache->t = CreateTextureFromRLE(data + 8, w, h, datalong - 8);
+            cache->tt[0] = cache->t;
+            //cache->t = SDL_CreateTextureFromSurface(g_Renderer, cache->s);
+            //SDL_DestroySurface(cache->s);
+            cache->s = NULL;
+        }
+        else    //读取png格式
+        {
+            tmpsurf = IMG_LoadTyped_IO(fp_SDL, true, "png");
+            if (tmpsurf == NULL)
+            {
+                JY_Error("LoadPic: cannot create SDL_Surface tmpsurf!\n");
+            }
+            cache->xoff = tmpsurf->w / 2;
+            cache->yoff = tmpsurf->h / 2;
+            cache->w = tmpsurf->w;
+            cache->h = tmpsurf->h;
+            cache->s = tmpsurf;
+            cache->toTexture();
+            //cache->t = SDL_CreateTextureFromSurface(g_Renderer, cache->s);
+            //SDL_DestroySurface(cache->s);
+            //cache->s = NULL;
+        }
+        SafeFree(p);
+    }
+    else
+    {
+        cache->s = NULL;
+        cache->t = NULL;
+        cache->xoff = 0;
+        cache->yoff = 0;
+    }
+
+    return 0;
+}
+
+//得到贴图大小
+int JY_GetPicXY(int fileid, int picid, int* w, int* h, int* xoff, int* yoff)
+{
+    struct CacheNode* newcache;
+    int r = JY_LoadPic(fileid, picid, g_ScreenW + 1, g_ScreenH + 1, 1, 0);    //加载贴图到看不见的位置
+
+    *w = 0;
+    *h = 0;
+    *xoff = 0;
+    *yoff = 0;
+
+    if (r != 0)
+    {
+        return 1;
+    }
+
+    newcache = pic_file[fileid].pcache[picid / 2];
+
+    if (newcache->t)    // 已有，则直接显示
+    {
+        *w = newcache->w;
+        *h = newcache->h;
+        *xoff = newcache->xoff;
+        *yoff = newcache->yoff;
+    }
+
+    return 0;
+}
+
+//按照原来游戏的RLE格式创建表面
+SDL_Texture* CreateTextureFromRLE(unsigned char* data, int w, int h, int datalong)
+{
+    int p = 0;
+    int i, j;
+    int yoffset;
+    int row;
+    int start;
+    int x;
+    int solidnum;
+    SDL_Surface *ps1, *ps2;
+    Uint32* data32 = NULL;
+
+    data32 = (Uint32*)malloc(w * h * 4);
+    if (data32 == NULL)
+    {
+        JY_Error("CreatePicSurface32: cannot malloc data32 memory!\n");
+        return NULL;
+    }
+
+    for (i = 0; i < w * h; i++)
+    {
+        data32[i] = 0;
+    }
+
+    for (i = 0; i < h; i++)
+    {
+        yoffset = i * w;
+        row = data[p];    // i行数据个数
+        start = p;
+        p++;
+        if (row > 0)
+        {
+            x = 0;    // i行目前列
+            for (;;)
+            {
+                x = x + data[p];    // i行空白点个数，跳个透明点
+                if (x >= w)         // i行宽度到头，结束
+                {
+                    break;
+                }
+
+                p++;
+                solidnum = data[p];    // 不透明点个数
+                p++;
+                for (j = 0; j < solidnum; j++)
+                {
+                    if (g_Rotate == 0)
+                    {
+                        data32[yoffset + x] = m_color32[data[p]] | AMASK;
+                    }
+                    else
+                    {
+                        data32[h - i - 1 + x * h] = m_color32[data[p]] | AMASK;
+                    }
+                    p++;
+                    x++;
+                }
+                if (x >= w)
+                {
+                    break;
+                }    // i行宽度到头，结束
+                if (p - start >= row)
+                {
+                    break;
+                }    // i行没有数据，结束
+            }
+            if (p + 1 >= datalong)
+            {
+                break;
+            }
+        }
+    }
+    ps1 = SDL_CreateSurfaceFrom(w, h, SDL_GetPixelFormatForMasks(32, RMASK, GMASK, BMASK, AMASK), data32, w * 4);    //创建32位表面
+    if (ps1 == NULL)
+    {
+        JY_Error("CreatePicSurface32: cannot create SDL_Surface ps1!\n");
+    }
+    ps2 = SDL_ConvertSurface(ps1, g_Surface->format);
+    if (ps2 == NULL)
+    {
+        JY_Error("CreatePicSurface32: cannot create SDL_Surface ps2!\n");
+    }
+    auto tex = SDL_CreateTextureFromSurface(g_Renderer, ps2);
+    SDL_DestroySurface(ps1);
+    SDL_DestroySurface(ps2);
+    SafeFree(data32);
+    return tex;
+}
+
+// 读取调色板
+// 文件名为空则直接返回
+int LoadPalette(const char* filename)
+{
+    FILE* fp;
+    char color[3];
+    int i;
+    if (strlen(filename) == 0)
+    {
+        return 1;
+    }
+    if ((fp = fopen(filename, "rb")) == NULL)
+    {
+        JY_Error("palette File not open ---%s", filename);
+        return 1;
+    }
+    for (i = 0; i < 256; i++)
+    {
+        fread(color, 1, 3, fp);
+        m_color32[i] = color[0] * 4 * 65536l + color[1] * 4 * 256 + color[2] * 4 + 0x000000;
+    }
+    fclose(fp);
+
+    return 0;
+}
+
+//参数说明：
+// path 贴图文件路径
+// fileid 贴图文件id
+// num 贴图个数，-1表示全部贴图
+// percent 贴图缩放比例，0-100，0表示不缩放，100表示原大小
+
+int JY_LoadPNGPath(const char* path, int fileid, int num, int percent, const char* suffix)
+{
+    int i;
+    struct CacheNode* tmpcache;
+    if (fileid < 0 || fileid >= PIC_FILE_NUM)    // id超出范围
+    {
+        return 1;
+    }
+
+    if (pic_file[fileid].pcache.size())    //释放当前文件占用的空间，并清理cache
+    {
+        int i;
+        for (i = 0; i < pic_file[fileid].num; i++)    //循环全部贴图，
+        {
+            tmpcache = pic_file[fileid].pcache[i];
+            if (tmpcache)    // 该贴图有缓存则删除
+            {
+                delete tmpcache;
+            }
+        }
+        //SafeFree(pic_file[fileid].pcache);
+    }
+
+    //sb500添加
+    pic_file[fileid].type = 1;
+    int ll = 0;
+    char zip_name[1024];
+    sprintf(zip_name, "%s.zip", path);
+    pic_file[fileid].zip_file.open(zip_name);
+
+    char index_name[1024];
+    std::string index_txt;
+    std::vector<short> offset;
+    std::vector<std::string> files;
+
+    if (pic_file[fileid].zip_file.opened())
+    {
+        files = pic_file[fileid].zip_file.getFileNames();
+        index_txt = pic_file[fileid].zip_file.readFile("index.txt");
+        if (index_txt.empty())
+        {
+            std::string content = pic_file[fileid].zip_file.readFile("index.ka");
+            ll = content.size();
+            offset.resize(ll / 2);
+            memcpy(offset.data(), content.data(), offset.size() * 2);
+        }
+    }
+    else
+    {
+        DIR* dir = opendir(path);
+        if (dir)
+        {
+            struct dirent* entry;
+            while ((entry = readdir(dir)) != nullptr)
+            {
+                if (entry->d_name[0] == '.')
+                    continue;
+                files.push_back(entry->d_name);
+            }
+            closedir(dir);
+        }
+
+        sprintf(index_name, "%s/index.txt", path);
+        if (FILE* f = fopen(index_name, "rb"))
+        {
+            fseek(f, 0, SEEK_END);
+            const long length = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            index_txt.resize(length);
+            fread(index_txt.data(), 1, index_txt.size(), f);
+            fclose(f);
+        }
+
+        sprintf(index_name, "%s/index.ka", path);
+        if (index_txt.empty())
+        {
+            if (FILE* f = fopen(index_name, "rb"))
+            {
+                JY_Debug("JY_LoadPNGPath: found index.ka file!\n");
+                fseek(f, 0, SEEK_END);
+                ll = ftell(f);
+                fseek(f, 0, 0);
+                offset.resize(ll / 2);
+                fread(offset.data(), 2, ll / 2, f);
+                fclose(f);
+            }
+        }
+    }
+
+    int max_image_number = -1;
+    bool mixed_image_formats = false;
+    std::string image_suffix;
+    CollectImageInfo(files, suffix, max_image_number, image_suffix, mixed_image_formats);
+    if (mixed_image_formats)
+    {
+        JY_Error("JY_LoadPNGPath: %s mixes PNG and WebP files!\n", path);
+        return 1;
+    }
+    if (image_suffix.empty())
+    {
+        image_suffix = NormalizeImageExtension(suffix ? suffix : "png");
+        if (!IsSupportedImageExtension(image_suffix))
+        {
+            image_suffix = "png";
+        }
+    }
+
+    if (num < 0)
+    {
+        num = max_image_number + 1;
+    }
+
+    //sb500修改
+    if (num > 0)
+    {
+        pic_file[fileid].num = num;
+        sprintf(pic_file[fileid].path, "%s", path);
+
+        pic_file[fileid].pcache.resize(pic_file[fileid].num);
+        if (pic_file[fileid].pcache.size() == 0)
+        {
+            JY_Error("JY_LoadPNGPath: cannot malloc pcache memory!\n");
+            return 1;
+        }
+        for (i = 0; i < pic_file[fileid].num; i++)
+        {
+            pic_file[fileid].pcache[i] = NULL;
+        }
+    }
+
+    pic_file[fileid].offset.assign(pic_file[fileid].num * 2, 0);
+    if (!index_txt.empty())
+    {
+        size_t line_start = 0;
+        while (line_start < index_txt.size())
+        {
+            const size_t line_end = index_txt.find_first_of("\r\n", line_start);
+            const std::string line = index_txt.substr(line_start, line_end - line_start);
+            int image_number = -1;
+            int x_offset = 0;
+            int y_offset = 0;
+            if (ParseIndexTextLine(line, image_number, x_offset, y_offset)
+                && image_number >= 0 && image_number < pic_file[fileid].num)
+            {
+                pic_file[fileid].offset[image_number * 2] = static_cast<short>(x_offset);
+                pic_file[fileid].offset[image_number * 2 + 1] = static_cast<short>(y_offset);
+            }
+            if (line_end == std::string::npos)
+            {
+                break;
+            }
+            line_start = line_end + 1;
+            if (line_start < index_txt.size() && index_txt[line_end] == '\r' && index_txt[line_start] == '\n')
+            {
+                ++line_start;
+            }
+        }
+    }
+    else if (ll > 0)
+    {
+        pic_file[fileid].offset = offset;
+        pic_file[fileid].offset.resize(pic_file[fileid].num * 2);
+    }
+
+    pic_file[fileid].percent = percent;
+    sprintf(pic_file[fileid].suffix, "%s", image_suffix.c_str());
+
+    return 0;
+}
+
+//参数说明：
+// fileid 贴图文件id
+// picid 贴图编号
+// x,y 显示位置
+// flag 不同bit代表不同含义，缺省均为0
+// B0 0 考虑偏移xoff，yoff。=1 不考虑偏移量
+// B1 0 , 1 与背景alpla 混合显示, value 为alpha值(0-255), 0表示透明
+
+int JY_LoadPNG(int fileid, int picid, int x, int y, int flag, int value, int percent)
+{
+    struct CacheNode *newcache, *tmpcache;
+    SDL_Surface* tmpsur;
+    SDL_FRect r;
+
+    picid = picid / 2;
+
+    if (fileid < 0 || fileid >= PIC_FILE_NUM || picid < 0 || picid >= pic_file[fileid].num)    // 参数错误
+    {
+        return 1;
+    }
+    if (pic_file[fileid].pcache[picid] == NULL)    //当前贴图没有加载
+    {
+        SDL_IOStream* fp_SDL;
+        double zoom = (double)pic_file[fileid].percent / 100.0;
+        std::string content;
+        //生成cache数据
+        newcache = new CacheNode();
+        if (newcache == NULL)
+        {
+            JY_Error("JY_LoadPNG: cannot malloc newcache memory!\n");
+            return 1;
+        }
+
+        newcache->id = picid;
+        newcache->fileid = fileid;
+        newcache->t_count = 1;
+
+        fp_SDL = OpenImageIO(pic_file[fileid], picid, -1, content);
+        if (fp_SDL == NULL)
+        {
+            for (int i = 0; i < TEXTURE_NUM; i++)
+            {
+                std::string frame_content;
+                SDL_IOStream* frame_stream = OpenImageIO(pic_file[fileid], picid, i, frame_content);
+                if (frame_stream == NULL)
+                {
+                    break;
+                }
+                tmpsur = IMG_Load_IO(frame_stream, true);
+                if (tmpsur == NULL)
+                {
+                    break;
+                }
+                if (i == 0)
+                {
+                    newcache->xoff = pic_file[fileid].offset[picid * 2];
+                    newcache->yoff = pic_file[fileid].offset[picid * 2 + 1];
+                    newcache->w = tmpsur->w;
+                    newcache->h = tmpsur->h;
+                    newcache->s = tmpsur;
+                    newcache->toTexture();
+                }
+                else
+                {
+                    newcache->tt[i] = SDL_CreateTextureFromSurface(g_Renderer, tmpsur);
+                    SDL_DestroySurface(tmpsur);
+                }
+                newcache->t_count = i + 1;
+            }
+        }
+        if (fp_SDL != NULL)
+        {
+            tmpsur = IMG_Load_IO(fp_SDL, true);
+            if (tmpsur == NULL)
+            {
+                JY_Error("JY_LoadPNG: cannot create SDL_Surface from image!\n");
+                return 1;
+            }
+
+            //sb500
+            newcache->xoff = pic_file[fileid].offset[picid * 2];
+            newcache->yoff = pic_file[fileid].offset[picid * 2 + 1];
+
+            newcache->w = tmpsur->w;
+            newcache->h = tmpsur->h;
+            newcache->s = tmpsur;
+            newcache->toTexture();
+            //newcache->t = SDL_CreateTextureFromSurface(g_Renderer, newcache->s);
+            //SDL_DestroySurface(newcache->s);
+            //newcache->s = NULL;
+        }
+        else
+        {
+            newcache->s = NULL;
+            newcache->t = NULL;
+            newcache->xoff = 0;
+            newcache->yoff = 0;
+        }
+
+        //指定比例
+        if (pic_file[fileid].percent > 0 && pic_file[fileid].percent != 100 && zoom != 0 && zoom != 1)
+        {
+            newcache->w = (int)(zoom * newcache->w);
+            newcache->h = (int)(zoom * newcache->h);
+            //tmpsur = newcache->t;
+            //newcache->s = zoomSurface(tmpsur, zoom, zoom, SMOOTHING_ON);
+            newcache->xoff = (int)(zoom * newcache->xoff);
+            newcache->yoff = (int)(zoom * newcache->yoff);
+            //SDL_SetSurfaceColorKey(newcache->s,SDL_SRCCOLORKEY|SDL_RLEACCEL ,ConvertColor(g_MaskColor32));  //透明色
+            //SDL_DestroySurface(tmpsur);
+        }
+        pic_file[fileid].pcache[picid] = newcache;
+    }
+    else    //已加载贴图
+    {
+        newcache = pic_file[fileid].pcache[picid];
+    }
+
+    if (newcache->t == NULL)    //贴图为空，直接退出
+    {
+        return 1;
+    }
+
+    if (flag & 0x1)
+    {
+        r.x = x;
+        r.y = y;
+    }
+    else
+    {
+        r.x = x - newcache->xoff;
+        r.y = y - newcache->yoff;
+    }
+
+    //SDL_BlitSurface(newcache->s, NULL, g_Surface, &r);
+    r.w = newcache->w * percent / 100.0;
+    r.h = newcache->h * percent / 100.0;
+
+    SDL_SetRenderTarget(g_Renderer, g_Texture);
+    if (g_DelayTimes % 2 == 0)
+    {
+        newcache->t = newcache->tt[g_DelayTimes / 2 % newcache->t_count];
+    }
+
+    if (flag & 0x2)    // alpha
+    {
+        SDL_SetTextureAlphaMod(newcache->t, (Uint8)value);
+        SDL_SetTextureBlendMode(newcache->t, SDL_BLENDMODE_BLEND);
+    }
+    else
+    {
+        SDL_SetTextureAlphaMod(newcache->t, 255);
+        SDL_SetTextureBlendMode(newcache->t, SDL_BLENDMODE_BLEND);
+    }
+
+    SDL_RenderTexture(g_Renderer, newcache->t, NULL, &r);
+
+    return 0;
+}
+
+int JY_GetPNGXY(int fileid, int picid, int* w, int* h, int* xoff, int* yoff)
+{
+    int r = JY_LoadPNG(fileid, picid, g_ScreenW + 1, g_ScreenH + 1, 1, 0, 100);    //加载贴图到看不见的位置
+
+    *w = 0;
+    *h = 0;
+    *xoff = 0;
+    *yoff = 0;
+
+    if (r != 0)
+    {
+        return 1;
+    }
+
+    auto newcache = pic_file[fileid].pcache[picid / 2];
+
+    if (newcache->t)    // 已有，则直接显示
+    {
+        *w = newcache->w;
+        *h = newcache->h;
+        *xoff = newcache->xoff;
+        *yoff = newcache->yoff;
+    }
+
+    return 0;
+}
+
+// 把表面blit到背景或者前景表面
+// x,y 要加载到表面的左上角坐标
+int RenderTexture(SDL_Texture* lps, int x, int y, int flag, int value, int color, int width, int height, double rotate, SDL_FlipMode reversal, int percent)
+{
+    SDL_Surface* tmps;
+    SDL_FRect rect, rect0;
+    int i, j;
+    //color = ConvertColor(g_MaskColor32);
+    if (value > 255)
+    {
+        value = 255;
+    }
+    rect.x = x;
+    rect.y = y;
+    SDL_GetTextureSize(lps, &rect.w, &rect.h);
+
+    rect.w *= percent / 100.0;
+    rect.h *= percent / 100.0;
+
+    if (width > 0 && height > 0)
+    {
+        rect.w = width;
+        rect.h = height;
+    }
+    else if (width > 0 && height <= 0)
+    {
+        rect.h = width * rect.h / rect.w;
+        rect.w = width;
+    }
+    rect0 = rect;
+    rect0.x = 0;
+    rect0.y = 0;
+    if (!lps)
+    {
+        JY_Error("BlitSurface: lps is null!");
+        return 1;
+    }
+
+    if ((flag & 0x2) == 0)    // 没有alpha
+    {
+        SDL_SetTextureColorMod(lps, 255, 255, 255);
+        SDL_SetTextureBlendMode(lps, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureAlphaMod(lps, 255);
+        RenderToTexture(lps, NULL, g_Texture, &rect, rotate, NULL, reversal);
+        //SDL_BlitSurface(lps, NULL, g_Surface, &rect);
+    }
+    else    // 有alpha
+    {
+        if ((flag & 0x4) || (flag & 0x8) || (flag & 0x10))    // 4-黑, 8-白, 16-颜色
+        {
+            // 4-黑, 8-白, 16-颜色
+            if (flag & 0x4)
+            {
+                SDL_SetTextureColorMod(lps, 32, 32, 32);
+                SDL_SetTextureBlendMode(lps, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureAlphaMod(lps, (Uint8)value);
+                RenderToTexture(lps, NULL, g_Texture, &rect, rotate, NULL, reversal);
+            }
+            else if (flag & 0x8)
+            {
+                SDL_SetTextureColorMod(lps, 255, 255, 255);
+                SDL_SetTextureBlendMode(lps, SDL_BLENDMODE_NONE);
+                SDL_SetTextureAlphaMod(lps, 255);
+                RenderToTexture(lps, NULL, g_TextureTmp, &rect, rotate, NULL, reversal);
+                SDL_SetTextureBlendMode(lps, SDL_BLENDMODE_ADD);
+                SDL_SetRenderDrawColor(g_Renderer, 255, 255, 255, 255);
+                SDL_SetRenderDrawBlendMode(g_Renderer, SDL_BLENDMODE_ADD);
+                SDL_RenderFillRect(g_Renderer, &rect);
+                SDL_SetTextureColorMod(g_TextureTmp, 255, 255, 255);
+                SDL_SetTextureBlendMode(g_TextureTmp, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureAlphaMod(g_TextureTmp, (Uint8)value);
+                RenderToTexture(g_TextureTmp, &rect, g_Texture, &rect, rotate, NULL, reversal);
+                SDL_SetTextureAlphaMod(g_TextureTmp, 255);
+            }
+            else
+            {
+                Uint8 r = (Uint8)((color & RMASK) >> 16);
+                Uint8 g = (Uint8)((color & GMASK) >> 8);
+                Uint8 b = (Uint8)((color & BMASK));
+                Uint8 a = 255;
+                SDL_SetTextureColorMod(lps, 255, 255, 255);
+                SDL_SetTextureBlendMode(lps, SDL_BLENDMODE_NONE);
+                SDL_SetTextureAlphaMod(lps, 255);
+                RenderToTexture(lps, NULL, g_TextureTmp, &rect, rotate, NULL, reversal);
+                SDL_SetTextureBlendMode(lps, SDL_BLENDMODE_ADD);
+                SDL_SetRenderDrawColor(g_Renderer, r, g, b, a);
+                SDL_SetRenderDrawBlendMode(g_Renderer, SDL_BLENDMODE_ADD);
+                SDL_RenderFillRect(g_Renderer, &rect);
+                SDL_SetTextureColorMod(g_TextureTmp, 255, 255, 255);
+                SDL_SetTextureBlendMode(g_TextureTmp, SDL_BLENDMODE_BLEND);
+                SDL_SetTextureAlphaMod(g_TextureTmp, (Uint8)value);
+                RenderToTexture(g_TextureTmp, &rect, g_Texture, &rect, rotate, NULL, reversal);
+                SDL_SetTextureAlphaMod(g_TextureTmp, 255);
+                //SDL_SetTextureColorMod(lps, r, g, b);
+                //SDL_SetTextureBlendMode(lps, SDL_BLENDMODE_BLEND);
+                //SDL_SetTextureAlphaMod(lps, (Uint8)value);
+                //RenderToTexture(lps, NULL, g_Texture, &rect);
+            }
+        }
+        else
+        {
+            SDL_SetTextureColorMod(lps, 255, 255, 255);
+            SDL_SetTextureBlendMode(lps, SDL_BLENDMODE_BLEND);
+            SDL_SetTextureAlphaMod(lps, (Uint8)value);
+            RenderToTexture(lps, NULL, g_Texture, &rect, rotate, NULL, reversal);
+            //SDL_BlitSurface(lps, NULL, g_Surface, &rect);
+        }
+    }
+    return 0;
+}

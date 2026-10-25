@@ -43,7 +43,3 @@ int LoadMB(const char* mbfile);
 //      = 3   GBK  --> Unicode
 // 注意要保证dest有足够的空间，一般建议取src长度的两倍+1，保证全英文字符也能转化为unicode
 int  JY_CharSet(const char *src, char *dest, int flag);
-
-// 繁体 -> 简体（单字，基于 TSCharacters.txt）
-void JY_TradToSimp_Init(const char* filename);
-Uint16 JY_TradToSimp_Char(Uint16 c);

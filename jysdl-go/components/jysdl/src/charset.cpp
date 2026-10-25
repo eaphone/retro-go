@@ -10,7 +10,6 @@
 #include "jymain.h"
 #include "SimpleCC.h"
 #include <map>
-#include <unordered_map>
 
 // 显示TTF 字符串
 // 为快速显示，程序将保存已经打开的相应字号的字体结构。这样做可以加快程序速度
@@ -35,68 +34,6 @@ std::map<std::string, std::map<int, SDL_Texture*>> chars_cache;
 EXT_RAM_BSS_ATTR SDL_Texture** chars_record[MAX_CACHE_CHAR] = { 0 };
 
 SimpleCC ccs2t, cct2s;
-
-// 繁体 -> 简体 单字映射（从 TSCharacters.txt 加载，UTF-8 键值 -> 码点）。
-static std::unordered_map<Uint16, Uint16> g_t2s;
-
-static Uint16 utf8_first_codepoint(const std::string& s)
-{
-    if (s.empty()) return 0;
-    const unsigned char* p = (const unsigned char*)s.c_str();
-    unsigned c = *p++;
-    int extra = 0;
-    if (c >= 0xF0)      { c &= 0x07; extra = 3; }
-    else if (c >= 0xE0) { c &= 0x0F; extra = 2; }
-    else if (c >= 0xC0) { c &= 0x1F; extra = 1; }
-    else if (c >= 0x80) { return 0; }
-    for (int i = 0; i < extra; i++) c = (c << 6) | (*p++ & 0x3F);
-    return (Uint16)(c > 0xFFFF ? 0 : c);
-}
-
-void JY_TradToSimp_Init(const char* filename)
-{
-    FILE* fp = fopen(filename, "rb");
-    if (!fp) { printf("[JY] trad2simp: %s not found\n", filename); return; }
-    fseek(fp, 0, SEEK_END);
-    long len = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    std::string data;
-    data.resize(len);
-    if (fread(&data[0], 1, len, fp) != (size_t)len) { fclose(fp); return; }
-    fclose(fp);
-
-    size_t i = 0;
-    while (i < data.size())
-    {
-        if (data[i] == '#') {          // skip comment line
-            size_t eol = data.find('\n', i);
-            if (eol == std::string::npos) break;
-            i = eol + 1;
-            continue;
-        }
-        size_t tab = data.find('\t', i);
-        if (tab == std::string::npos) { i++; continue; }
-        std::string key = data.substr(i, tab - i);
-        size_t eol = data.find('\n', tab + 1);
-        if (eol == std::string::npos) break;
-        std::string value = data.substr(tab + 1, eol - tab - 1);
-        if (!value.empty() && value.back() == '\r') value.pop_back();
-        size_t sp = value.find(' ');
-        if (sp != std::string::npos) value = value.substr(0, sp);
-
-        Uint16 k = utf8_first_codepoint(key);
-        Uint16 v = utf8_first_codepoint(value);
-        if (k && v && k != v) g_t2s[k] = v;
-        i = eol + 1;
-    }
-    printf("[JY] trad2simp: %d mappings loaded\n", (int)g_t2s.size());
-}
-
-Uint16 JY_TradToSimp_Char(Uint16 c)
-{
-    auto it = g_t2s.find(c);
-    return (it != g_t2s.end()) ? it->second : c;
-}
 //初始化
 int InitFont()
 {
@@ -113,7 +50,6 @@ int InitFont()
     }
 
     ccs2t.init({ "STCharacters.txt", "STPhrases.txt" });
-    JY_TradToSimp_Init("TSCharacters.txt");
     cct2s.init({ "TSCharacters.txt", "TSPhrases.txt" });
 
     return 0;

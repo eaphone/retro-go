@@ -138,9 +138,8 @@ int JY_DrawStr(int x, int y, const char *str, int color, int size, const char *f
     {
         if (u[i] == 0)
             break;
-        Uint16 ch = JY_TradToSimp_Char(u[i]);
-        int advance = (ch < 128) ? ((size / 2) > 0 ? (size / 2) : size) : size;
-        const rg_font_glyph_t *g = fusion_find_glyph(ch);
+        int advance = (u[i] < 128) ? ((size / 2) > 0 ? (size / 2) : size) : size;
+        const rg_font_glyph_t *g = fusion_find_glyph(u[i]);
         if (g)
         {
             fusion_draw_glyph(g, pen_x + 1, y + 1, size, shadow);

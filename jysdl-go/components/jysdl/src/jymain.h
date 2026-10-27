@@ -133,3 +133,10 @@ extern void* g_Tinypot;
 extern const char* JY_CurrentPath;
 
 extern ParticleExample g_Particle;
+
+/* --- temporary runtime diagnostics (remove once the port is stable) --- */
+extern volatile unsigned g_jy_dbg_frames;   /* JY_ShowSurface calls */
+extern volatile unsigned g_jy_dbg_loads;    /* JY_LoadPicture calls */
+extern volatile unsigned g_jy_dbg_delays;   /* JY_Delay calls */
+extern volatile unsigned g_jy_dbg_polls;    /* SDL_PollEvent calls */
+extern volatile const char *g_jy_dbg_last;  /* last blocking-ish API entered */

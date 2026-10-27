@@ -7,6 +7,10 @@
 
 #include <rg_system.h>
 
+/* counters owned by jymain.cpp (temporary diagnostics) */
+extern volatile unsigned g_jy_dbg_polls;
+extern volatile const char *g_jy_dbg_last;
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +58,12 @@ static void *g_event_filter_data = NULL;
 
 /* The physical display framebuffer (RGB565) used by SDL_RenderPresent. */
 static rg_surface_t *g_display = NULL;
+
+/* Expose the current display framebuffer for the retro-go screenshot handler. */
+extern "C" rg_surface_t *jysdl_get_display(void)
+{
+    return g_display;
+}
 
 /* ------------------------------------------------------------------ */
 /* Memory                                                              */
@@ -330,10 +340,12 @@ SDL_Texture *SDL_CreateTexture(SDL_Renderer *renderer, SDL_PixelFormat format, S
 {
     (void)renderer;
     SDL_Texture *t = (SDL_Texture *)calloc(1, sizeof(*t));
+    if (!t) return NULL;
     t->format = format;
     t->access = access;
     t->w = w; t->h = h;
     t->pixels = (Uint32 *)calloc((size_t)w * h, 4);
+    if (!t->pixels) { free(t); return NULL; }
     t->blend_mode = SDL_BLENDMODE_NONE;
     t->alpha_mod = 255;
     t->r_mod = t->g_mod = t->b_mod = 255;
@@ -347,6 +359,7 @@ SDL_Texture *SDL_CreateTextureFromSurface(SDL_Renderer *renderer, SDL_Surface *s
     if (!surface) return NULL;
     SDL_Texture *t = SDL_CreateTexture(renderer, surface->format ? surface->format->format : SDL_PIXELFORMAT_ARGB8888,
                                        SDL_TEXTUREACCESS_STATIC, surface->w, surface->h);
+    if (!t) return NULL;
     Uint32 *src = (Uint32 *)surface->pixels;
     Uint32 *dst = t->pixels;
     for (int i = 0; i < surface->w * surface->h; i++) {
@@ -769,6 +782,10 @@ bool SDL_RenderPresent(SDL_Renderer *renderer)
     int sw = bb->w, sh = bb->h;
     int dw = RG_SCREEN_WIDTH, dh = RG_SCREEN_HEIGHT;
 
+    static int present_count = 0;
+    if (present_count++ == 0)
+        RG_LOGI("present: backbuffer %dx%d -> %dx%d\n", sw, sh, dw, dh);
+
     if (!g_display)
         g_display = rg_surface_create(dw, dh, RG_PIXEL_565_LE, MEM_FAST);
 
@@ -920,6 +937,8 @@ static void synthesize_gamepad_events(void)
 
 bool SDL_PollEvent(SDL_Event *event)
 {
+    g_jy_dbg_polls++;
+    g_jy_dbg_last = "PollEvent";
     synthesize_gamepad_events();
 
     if (g_event_head == g_event_tail)

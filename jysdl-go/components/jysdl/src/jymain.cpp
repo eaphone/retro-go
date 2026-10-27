@@ -11,6 +11,17 @@
 #include <time.h>
 #include <sys/stat.h>
 
+/* Forward declarations for the watchdog task. We deliberately avoid including
+   <rg_system.h> here: it pulls in rg_localization.h, whose "#define _(x)" would
+   override jymain.h's _(f) = va("%s%s", JY_CurrentPath, f) and break every path
+   join in this file. */
+extern "C" {
+    typedef struct rg_task_s rg_task_t;
+    rg_task_t *rg_task_create(const char *name, void (*taskFunc)(void *arg), void *arg,
+                              size_t stackSize, size_t queueDepth, int priority, int affinity);
+    void rg_task_delay(uint32_t ms);
+}
+
 #ifdef _WIN32
 extern "C" __declspec(dllimport) int __stdcall SetConsoleOutputCP(unsigned int);
 #endif
@@ -57,6 +68,27 @@ float g_Zoom = 1;            //图片缩放比例
 char g_Softener[255];        //柔化滤镜名称
 int g_DelayTimes;            //延迟帧数
 
+/* --- runtime diagnostics: proves the app is alive and shows what it is doing --- */
+volatile unsigned g_jy_dbg_frames = 0;
+volatile unsigned g_jy_dbg_loads = 0;
+volatile unsigned g_jy_dbg_delays = 0;
+volatile unsigned g_jy_dbg_polls = 0;
+volatile const char *g_jy_dbg_last = "boot";
+
+static void jy_watchdog_task(void *arg)
+{
+    (void)arg;
+    unsigned last_frames = 0;
+    for (;;)
+    {
+        rg_task_delay(3000);
+        printf("alive: frames=%u (+%u) loads=%u delays=%u polls=%u last=%s\n",
+               g_jy_dbg_frames, g_jy_dbg_frames - last_frames,
+               g_jy_dbg_loads, g_jy_dbg_delays, g_jy_dbg_polls,
+               g_jy_dbg_last ? g_jy_dbg_last : "?");
+        last_frames = g_jy_dbg_frames;
+    }
+}
 #ifdef _WIN32
 const char* JY_CurrentPath = "./";
 #else
@@ -67,6 +99,147 @@ const char* JY_CurrentPath = "/sd/roms/jy/";
 extern "C" void jysdl_set_current_path(const char *path)
 {
     JY_CurrentPath = path;
+}
+
+static char g_resume_filename[512] = {0};
+
+/* retro-go resume: store the save-state filename to load before JY_Main runs. */
+extern "C" void jysdl_set_resume(const char *filename)
+{
+    if (filename && filename[0])
+        snprintf(g_resume_filename, sizeof(g_resume_filename), "%s", filename);
+    else
+        g_resume_filename[0] = '\0';
+}
+
+/* ---- retro-go save state: serialize the game's in-memory data directly ---- */
+
+extern "C" bool jysdl_save_state(const char *filename)
+{
+    if (!pL_main || !filename) return false;
+
+    static const char *names[6] = {"Data_Base", "Data_Person", "Data_Thing", "Data_Scene", "Data_Wugong", "Data_Shop"};
+    uint32_t sizes[6];
+    char *ptrs[6];
+
+    lua_getglobal(pL_main, "JY");
+    for (int i = 0; i < 6; i++)
+    {
+        lua_getfield(pL_main, -1, names[i]);
+        ptrs[i] = (char *)lua_touserdata(pL_main, -1);
+        sizes[i] = (uint32_t)lua_rawlen(pL_main, -1);
+        lua_pop(pL_main, 1);
+    }
+    lua_pop(pL_main, 1);   /* JY */
+
+    FILE *fp = fopen(filename, "wb");
+    if (!fp) return false;
+
+    bool ok = (fwrite(sizes, 1, sizeof(sizes), fp) == sizeof(sizes));
+    for (int i = 0; ok && i < 6; i++)
+        if (ptrs[i] && sizes[i])
+            ok = (fwrite(ptrs[i], 1, sizes[i], fp) == sizes[i]);
+    if (ok)
+        ok = jysdl_save_scene(fp);
+
+    /* Save the game state machine (mode + current scene). */
+    int32_t status = 0, subscene = -1;
+    lua_getglobal(pL_main, "JY");
+    lua_getfield(pL_main, -1, "Status");
+    status = (int32_t)lua_tointeger(pL_main, -1);
+    lua_pop(pL_main, 1);
+    lua_getfield(pL_main, -1, "SubScene");
+    subscene = (int32_t)lua_tointeger(pL_main, -1);
+    lua_pop(pL_main, 1);
+    lua_pop(pL_main, 1);
+    if (ok)
+        ok = (fwrite(&status, 1, sizeof(status), fp) == sizeof(status)) &&
+             (fwrite(&subscene, 1, sizeof(subscene), fp) == sizeof(subscene));
+
+    fclose(fp);
+    return ok;
+}
+
+extern "C" bool jysdl_load_state(const char *filename)
+{
+    if (!pL_main || !filename) return false;
+
+    static const char *names[6] = {"Data_Base", "Data_Person", "Data_Thing", "Data_Scene", "Data_Wugong", "Data_Shop"};
+    uint32_t sizes[6];
+    char *ptrs[6];
+    uint32_t lens[6];
+
+    lua_getglobal(pL_main, "JY");
+    for (int i = 0; i < 6; i++)
+    {
+        lua_getfield(pL_main, -1, names[i]);
+        ptrs[i] = (char *)lua_touserdata(pL_main, -1);
+        lens[i] = (uint32_t)lua_rawlen(pL_main, -1);
+        lua_pop(pL_main, 1);
+    }
+    lua_pop(pL_main, 1);
+
+    FILE *fp = fopen(filename, "rb");
+    if (!fp)
+    {
+        JY_Error("load_state: cannot open %s", filename);
+        return false;
+    }
+
+    bool ok = (fread(sizes, 1, sizeof(sizes), fp) == sizeof(sizes));
+    if (!ok)
+        JY_Error("load_state: header read failed");
+    for (int i = 0; ok && i < 6; i++)
+    {
+        if (sizes[i] > lens[i])
+        {
+            JY_Error("load_state: %s size=%u > buffer=%u", names[i], (unsigned)sizes[i], (unsigned)lens[i]);
+            ok = false;
+            break;
+        }
+        if (sizes[i] && !ptrs[i])
+        {
+            JY_Error("load_state: %s has no buffer", names[i]);
+            ok = false;
+            break;
+        }
+        if (sizes[i] && fread(ptrs[i], 1, sizes[i], fp) != sizes[i])
+        {
+            JY_Error("load_state: %s read failed", names[i]);
+            ok = false;
+            break;
+        }
+    }
+    if (ok)
+        ok = jysdl_load_scene(fp);
+
+    int32_t status = 0, subscene = -1;
+    if (ok)
+        ok = (fread(&status, 1, sizeof(status), fp) == sizeof(status)) &&
+             (fread(&subscene, 1, sizeof(subscene), fp) == sizeof(subscene));
+    fclose(fp);
+
+    if (!ok)
+    {
+        JY_Error("load_state: FAILED for %s", filename);
+        return false;
+    }
+    JY_Debug("load_state: ok, status=%d subscene=%d", (int)status, (int)subscene);
+
+    /* Resume the game at the saved state. A main-map save must re-enter via
+       GAME_FIRSTMMAP so Game_Cycle() calls Init_MMap() (the map data is not
+       loaded on boot); battle/dead are transient and also resume on the map. */
+    if (status == 2 || status == 5 || status == 6)
+        status = 1;   /* GAME_MMAP / GAME_WMAP / GAME_DEAD -> GAME_FIRSTMMAP */
+
+    lua_getglobal(pL_main, "JY");
+    lua_pushinteger(pL_main, status);
+    lua_setfield(pL_main, -2, "Status");
+    lua_pushinteger(pL_main, subscene);
+    lua_setfield(pL_main, -2, "SubScene");
+    lua_pop(pL_main, 1);
+
+    return true;
 }
 
 lua_State* pL_main = NULL;
@@ -153,6 +326,15 @@ static int JY_OpenLogFiles()
     return 0;
 }
 
+// retro-go resume: load a save-state file. Called from Lua after JY is fully initialized.
+static int HAPI_LoadState(lua_State *pL)
+{
+    const char *filename = luaL_checkstring(pL, 1);
+    bool ok = jysdl_load_state(filename);
+    lua_pushboolean(pL, ok ? 1 : 0);
+    return 1;
+}
+
 //定义的lua接口函数名
 const struct luaL_Reg jylib[] = {
     { "Debug", HAPI_Debug },
@@ -183,6 +365,7 @@ const struct luaL_Reg jylib[] = {
     { "FullScreen", HAPI_FullScreen },
 
     { "LoadPicture", HAPI_LoadPicture },
+    { "LoadState", HAPI_LoadState },
 
     { "PlayMIDI", HAPI_PlayMIDI },
     { "PlayWAV", HAPI_PlayWAV },
@@ -286,6 +469,8 @@ extern "C" int jysdl_main(int argc, char* argv[])
     if (JY_OpenLogFiles() != 0)
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "cannot open %s or %s", DEBUG_FILE, ERROR_FILE);
 
+    rg_task_create("jywatch", jy_watchdog_task, NULL, 3 * 1024, 0, 3, 0);
+
     pL_main = luaL_newstate();
     luaL_openlibs(pL_main);
 
@@ -300,6 +485,7 @@ extern "C" int jysdl_main(int argc, char* argv[])
     lua_pushvalue(pL_main, -1);
     lua_setglobal(pL_main, "Byte");
 
+    JY_Debug("JY_CurrentPath='%s'", JY_CurrentPath);
     JY_Debug("Lua_Config();");
     Lua_Config(pL_main, _(CONFIG_FILE));    //读取lua配置文件，设置参数
 
@@ -353,6 +539,18 @@ int Lua_Main(lua_State* pL_main)
             lua_setfield(pL_main, -2, "Frame");
         }
         lua_pop(pL_main, 1);
+
+        /* retro-go resume: hand the save-state filename to the Lua script.
+           The actual LoadRecord + jysdl_load_state must run AFTER JY_Main_sub
+           has executed SetGlobalConst()/SetGlobal() (JY table + CC consts), so
+           jymain.lua does it right before its existing ResumeDone jump. */
+        if (g_resume_filename[0])
+        {
+            JY_Debug("resume: stashing state file '%s'", g_resume_filename);
+            lua_pushstring(pL_main, g_resume_filename);
+            lua_setglobal(pL_main, "__jy_resume_file");
+            g_resume_filename[0] = '\0';
+        }
 
         //调用lua的主函数JY_Main
         lua_getglobal(pL_main, "JY_Main");
@@ -455,6 +653,8 @@ int Lua_Config(lua_State* pL, const char* filename)
 
     g_MAXCacheNum = getfield(pL, "MAXCacheNum");
     g_LoadFullS = getfield(pL, "LoadFullS");
+    g_LoadMMapType = getfield(pL, "LoadMMapType");
+    g_LoadMMapScope = getfield(pL, "LoadMMapScope");
     g_MP3 = getfield(pL, "MP3");
     int zoom = getfield(pL, "Zoom");
     g_Zoom = zoom > 0 ? (float)(zoom / 100.0) : 1.0f;

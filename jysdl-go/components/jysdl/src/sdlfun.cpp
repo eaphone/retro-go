@@ -265,6 +265,8 @@ SDL_Texture* CreateRenderedTexture(int w, int h)
 //  str 文件名，如果为空，则释放表面
 int JY_LoadPicture(const char* str, int x, int y)
 {
+    g_jy_dbg_loads++;
+    g_jy_dbg_last = "LoadPicture";
     static char filename[255] = "\0";
     static SDL_Texture* tex = NULL;
     static SDL_FRect r;
@@ -320,6 +322,8 @@ int JY_LoadPicture(const char* str, int x, int y)
 //flag = 0 显示全部表面  =1 按照JY_SetClip设置的矩形显示，如果没有矩形，则不显示
 int JY_ShowSurface(int flag)
 {
+    g_jy_dbg_frames++;
+    g_jy_dbg_last = "ShowSurface";
     SDL_SetRenderTarget(g_Renderer, g_TextureShow);
     if (flag == 1)
     {
@@ -356,6 +360,8 @@ int JY_ShowSurface(int flag)
 //延时x毫秒
 int JY_Delay(int x)
 {
+    g_jy_dbg_delays++;
+    g_jy_dbg_last = "Delay";
     SDL_Delay(x);
     g_DelayTimes++;
     return 0;

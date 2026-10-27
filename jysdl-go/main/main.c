@@ -9,6 +9,7 @@
  * game root (JY_CurrentPath), from which the engine loads config.lua.
  */
 #include <rg_system.h>
+#include <rg_surface.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,6 +18,10 @@
 
 extern int jysdl_main(int argc, char **argv);
 extern void jysdl_set_current_path(const char *path);
+extern bool jysdl_save_state(const char *filename);
+extern bool jysdl_load_state(const char *filename);
+extern rg_surface_t *jysdl_get_display(void);
+extern void jysdl_set_resume(const char *filename);
 
 static char jy_path[RG_PATH_MAX + 1] = RG_BASE_PATH_ROMS "/jy/";
 
@@ -41,6 +46,23 @@ static void jy_determine_path(const char *romPath)
     jysdl_set_current_path(jy_path);
 }
 
+static bool screenshot_handler(const char *filename, int width, int height)
+{
+    rg_surface_t *fb = jysdl_get_display();
+    if (!fb) return false;
+    return rg_surface_save_image_file(fb, filename, width, height);
+}
+
+static bool save_state_handler(const char *filename)
+{
+    return jysdl_save_state(filename);
+}
+
+static bool load_state_handler(const char *filename)
+{
+    return jysdl_load_state(filename);
+}
+
 void app_main(void)
 {
     const rg_config_t config = {
@@ -49,7 +71,9 @@ void app_main(void)
         .storageRequired = true,
         .romRequired = false,
         .handlers = {
-            .screenshot = NULL,
+            .screenshot = screenshot_handler,
+            .saveState = save_state_handler,
+            .loadState = load_state_handler,
             .reset = NULL,
             .event = NULL,
         },
@@ -60,6 +84,20 @@ void app_main(void)
     app->configNs = "jysdl-go";
 
     jy_determine_path(app->romPath);
+
+    RG_LOGI("bootFlags=0x%X saveSlot=%d rom=%s", (unsigned)app->bootFlags, app->saveSlot, app->romPath ? app->romPath : "(null)");
+
+    if (app->bootFlags & RG_BOOT_RESUME)
+    {
+        char *filename = rg_emu_get_path(RG_PATH_SAVE_STATE + app->saveSlot, app->romPath);
+        RG_LOGI("resume: save state %s (exists=%d)", filename, (int)rg_storage_exists(filename));
+        jysdl_set_resume(filename);
+        free(filename);
+    }
+    else
+    {
+        RG_LOGI("resume: not requested, starting a new game");
+    }
 
     char config_file[RG_PATH_MAX + 16];
     snprintf(config_file, sizeof(config_file), "%sconfig.lua", jy_path);

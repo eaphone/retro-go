@@ -26,6 +26,8 @@ int JY_SetMMap(short x, short y, int flag, short v);
 int JY_LoadSMap(const char* Sfilename, const char* tmpfilename, int num, int x_max, int y_max,
     const char* Dfilename, int d_num1, int d_num2);
 int JY_SaveSMap(const char* Sfilename, const char* Dfilename);
+bool jysdl_save_scene(FILE* fp);
+bool jysdl_load_scene(FILE* fp);
 int JY_UnloadSMap();
 int ReadS(int id);
 int WriteS(int id);

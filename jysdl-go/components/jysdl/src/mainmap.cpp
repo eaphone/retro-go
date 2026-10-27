@@ -1,6 +1,6 @@
 
 //绘制主地图、场景地图和战斗地图
-//为加快速度，这些函数改为c中实现
+//为加快速度，这些函数改为c中实�?
 
 #include "mainmap.h"
 #include "jymain.h"
@@ -15,7 +15,7 @@ static int LoadMMap_Part(int read, int x, int y);
 static int LoadMMap_Part_Sub(FILE* fp, Sint16** p);
 static int BuildingSort(short x, short y, short Mypic);
 
-//主地图数据
+//主地图数�?
 Sint16* pEarth = NULL;
 Sint16* pSurface = NULL;
 Sint16* pBuilding = NULL;
@@ -31,10 +31,10 @@ FILE* fpBuilding = NULL;
 FILE* fpBuildX = NULL;
 FILE* fpBuildY = NULL;
 
-int M_XMax, M_YMax;    //主地图大小
+int M_XMax, M_YMax;    //主地图大�?
 
 int M_X0, M_Y0;    //部分读取主地图的起始坐标
-int M_Scope;       //部分读取主地图时的坐标范围。每次显示主地图访问坐标范围为此值的两倍。而预读的主地图范围为4倍。
+int M_Scope;       //部分读取主地图时的坐标范围。每次显示主地图访问坐标范围为此值的两倍。而预读的主地图范围为4倍�?
 int old_M_Y0 = -1;
 
 int BuildNumber;             //实际排序个数
@@ -45,11 +45,11 @@ int S_Num;
 Sint16* pS = NULL;    //场景S*数据
 
 //为减少内存占用，对S文件采用临时文件方式访问，只在内存中保存当前场景的S数据
-char TempS_filename[255];    //临时S文件名
+char TempS_filename[255];    //临时S文件�?
 int currentS = -1;           //当前加载的场景S数据
 
-int D_Num1;    //每个场景D的个数
-int D_Num2;    //每个D的数据个数
+int D_Num1;    //每个场景D的个�?
+int D_Num2;    //每个D的数据个�?
 
 Sint16* pD = NULL;    //场景D*数据
 
@@ -57,7 +57,7 @@ int War_XMax, War_YMax;    //战斗地图大小
 int War_Num;               //战斗地图层数
 Sint16* pWar = NULL;       //战斗地图数据
 
-// 读取主地图数据
+// 读取主地图数�?
 int JY_LoadMMap(const char* earthname, const char* surfacename, const char* buildingname,
     const char* buildxname, const char* buildyname, int x_max, int y_max, int x, int y)
 {
@@ -76,7 +76,7 @@ int JY_LoadMMap(const char* earthname, const char* surfacename, const char* buil
     }
     else    //部分读取
     {
-        int rangex = g_ScreenW / (2 * g_XScale) / 2 + 1 + g_MMapAddX;    //计算主地图访问坐标范围
+        int rangex = g_ScreenW / (2 * g_XScale) / 2 + 1 + g_MMapAddX;    //计算主地图访问坐标范�?
         int rangey = g_ScreenH / (2 * g_YScale) / 2 + 1;
 
         M_Scope = rangex + rangey + g_MMapAddY + 5;
@@ -89,7 +89,7 @@ int JY_LoadMMap(const char* earthname, const char* surfacename, const char* buil
 
         JY_Debug("Load MMap Scope=%d", M_Scope);
 
-        if ((fpEarth = fopen(earthname, "rb")) == NULL)    //打开主地图文件句柄
+        if ((fpEarth = fopen(earthname, "rb")) == NULL)    //打开主地图文件句�?
         {
             JY_Error("file not open ---%s", earthname);
             return 1;
@@ -114,13 +114,13 @@ int JY_LoadMMap(const char* earthname, const char* surfacename, const char* buil
             JY_Error("file not open ---%s", buildyname);
             return 1;
         }
-        LoadMMap_Part(1, x, y);    //部分读取主地图
+        LoadMMap_Part(1, x, y);    //部分读取主地�?
     }
 
     return 0;
 }
 
-//全部读取主地图
+//全部读取主地�?
 static int LoadMMap_Sub(const char* filename, Sint16** p)
 {
     FILE* fp;
@@ -148,22 +148,22 @@ static int LoadMMap_Sub(const char* filename, Sint16** p)
     return 0;
 }
 
-//部分读取主地图数据
-// read 0 根据需要读取  1 强制读取
+//部分读取主地图数�?
+// read 0 根据需要读�?  1 强制读取
 static int LoadMMap_Part(int read, int x, int y)
 {
     int x1, y1, x2, y2;
 
     if (read == 0)    //计算是否需要读取主地图数据
     {
-        x1 = limitX(x - M_Scope, 0, M_XMax - 1);    //显示地图时读取的左上角和右下角坐标
+        x1 = limitX(x - M_Scope, 0, M_XMax - 1);    //显示地图时读取的左上角和右下角坐�?
         y1 = limitX(y - M_Scope, 0, M_YMax - 1);
         x2 = limitX(x + M_Scope, 0, M_XMax - 1);
         y2 = limitX(y + M_Scope, 0, M_YMax - 1);
 
         if (g_LoadMMapType == 1)
         {
-            if (x1 < 0 || y1 < M_Y0 || x2 >= M_XMax || y2 >= M_Y0 + 4 * M_Scope)    //坐标超出范围，需要读取
+            if (x1 < 0 || y1 < M_Y0 || x2 >= M_XMax || y2 >= M_Y0 + 4 * M_Scope)    //坐标超出范围，需要读�?
             {
                 read = 1;
             }
@@ -185,7 +185,7 @@ static int LoadMMap_Part(int read, int x, int y)
         }
         else
         {
-            M_X0 = limitX(x - 2 * M_Scope, 0, M_XMax - 4 * M_Scope);    //读取主地图的左上角坐标
+            M_X0 = limitX(x - 2 * M_Scope, 0, M_XMax - 4 * M_Scope);    //读取主地图的左上角坐�?
         }
         M_Y0 = limitX(y - 2 * M_Scope, 0, M_YMax - 4 * M_Scope);
 
@@ -200,7 +200,7 @@ static int LoadMMap_Part(int read, int x, int y)
     return 0;
 }
 
-static int LoadMMap_Part_Sub(FILE* fp, Sint16** p)    //部分读取每个主地图
+static int LoadMMap_Part_Sub(FILE* fp, Sint16** p)    //部分读取每个主地�?
 {
     int i;
 
@@ -211,7 +211,7 @@ static int LoadMMap_Part_Sub(FILE* fp, Sint16** p)    //部分读取每个主地
             *p = (Sint16*)malloc(4 * M_Scope * M_XMax * 2);
         }
 
-        if (old_M_Y0 < 0)    //没有以前的数据，第一次读取。
+        if (old_M_Y0 < 0)    //没有以前的数据，第一次读取�?
         {
             fseek(fp, M_Y0 * M_XMax * 2, SEEK_SET);
             fread(*p, 2, 4 * M_Scope * M_XMax, fp);
@@ -240,7 +240,7 @@ static int LoadMMap_Part_Sub(FILE* fp, Sint16** p)    //部分读取每个主地
             *p = (Sint16*)malloc(4 * M_Scope * 4 * M_Scope * 2);
         }
 
-        //读取当前附近行数据到临时内存。在手机上，这样做比逐行读取一段数据速度快很多(难道flash读取和硬盘不一样？)
+        //读取当前附近行数据到临时内存。在手机上，这样做比逐行读取一段数据速度快很�?(难道flash读取和硬盘不一样？)
         if (tmp_M == NULL)
         {
             tmp_M = (Sint16*)malloc(4 * M_Scope * M_XMax * 2);
@@ -332,7 +332,7 @@ int JY_SetM(int id, int x, int y, int v)
     return 0;
 }
 
-// 释放主地图数据
+// 释放主地图数�?
 int JY_UnloadMMap(void)
 {
     SafeFree(pEarth);
@@ -372,7 +372,7 @@ int JY_UnloadMMap(void)
     return 0;
 }
 
-// 得到主地图数据偏移地址。如果超出当前内存的数据范围，返回-1
+// 得到主地图数据偏移地址。如果超出当前内存的数据范围，返�?-1
 int GetMMapOffset(int x, int y)
 {
     int s;
@@ -472,7 +472,7 @@ int JY_SetMMap(short x, short y, int flag, short v)
     return 0;
 }
 
-// 主地图建筑排序
+// 主地图建筑排�?
 // x,y 主角坐标
 // Mypic 主角贴图编号
 static int BuildingSort(short x, short y, short Mypic)
@@ -638,7 +638,7 @@ public:
 
 std::vector<Cloud> clouds;
 
-// 绘制主地图
+// 绘制主地�?
 int JY_DrawMMap(int x, int y, int Mypic)
 {
     int i, j;
@@ -661,7 +661,7 @@ int JY_DrawMMap(int x, int y, int Mypic)
 
     BuildNumber = 0;
 
-    if (g_LoadMMapType != 0)    //部分读取主地图，则根据需要重新读取数据
+    if (g_LoadMMapType != 0)    //部分读取主地图，则根据需要重新读取数�?
     {
         LoadMMap_Part(0, x, y);
     }
@@ -765,7 +765,7 @@ int JY_LoadSMap(const char* Sfilename, const char* tmpfilename, int num, int x_m
     S_Num = num;
 
     //读取S文件
-    if (g_LoadFullS == 0)    //读取s到临时文件
+    if (g_LoadFullS == 0)    //读取s到临时文�?
     {
         strcpy(TempS_filename, tmpfilename);
         if (pS == NULL)
@@ -915,7 +915,83 @@ int JY_UnloadSMap()
     return 0;
 }
 
-//从临时文件中读取场景id的S数据到内存
+/* Serialize the current scene state (SMap + D) into an already-open file. */
+bool jysdl_save_scene(FILE* fp)
+{
+    if (!pS || !pD || !fp) return false;
+
+    uint32_t smap_size = (uint32_t)(S_XMax * S_YMax * 6 * 2) * (uint32_t)S_Num;
+    uint32_t d_size = (uint32_t)(D_Num1 * D_Num2 * S_Num * 2);
+
+    fwrite(&smap_size, 1, sizeof(smap_size), fp);
+    fwrite(&d_size, 1, sizeof(d_size), fp);
+
+    if (g_LoadFullS == 0)
+    {
+        /* Partial load: flush pS into the temp file, then stream the temp file out. */
+        WriteS(currentS);
+        currentS = -1;
+        FILE* tfp = fopen(TempS_filename, "rb");
+        if (!tfp) return false;
+        char buf[1024];
+        uint32_t remaining = smap_size;
+        while (remaining > 0)
+        {
+            size_t want = remaining < sizeof(buf) ? remaining : sizeof(buf);
+            size_t n = fread(buf, 1, want, tfp);
+            if (n == 0) break;
+            fwrite(buf, 1, n, fp);
+            remaining -= (uint32_t)n;
+        }
+        fclose(tfp);
+    }
+    else
+    {
+        /* Full load: pS already holds every scene. */
+        fwrite(pS, 1, smap_size, fp);
+    }
+
+    fwrite(pD, 1, d_size, fp);
+    return true;
+}
+
+/* Restore the scene state (SMap + D) from an already-open file. */
+bool jysdl_load_scene(FILE* fp)
+{
+    if (!pS || !pD || !fp) return false;
+
+    uint32_t smap_size = 0, d_size = 0;
+    if (fread(&smap_size, 1, sizeof(smap_size), fp) != sizeof(smap_size)) return false;
+    if (fread(&d_size, 1, sizeof(d_size), fp) != sizeof(d_size)) return false;
+
+    if (g_LoadFullS == 0)
+    {
+        FILE* tfp = fopen(TempS_filename, "wb");
+        if (!tfp) return false;
+        char buf[1024];
+        uint32_t remaining = smap_size;
+        while (remaining > 0)
+        {
+            size_t want = remaining < sizeof(buf) ? remaining : sizeof(buf);
+            size_t n = fread(buf, 1, want, fp);
+            if (n == 0) break;
+            fwrite(buf, 1, n, tfp);
+            remaining -= (uint32_t)n;
+        }
+        fclose(tfp);
+    }
+    else
+    {
+        if (fread(pS, 1, smap_size, fp) != smap_size) return false;
+    }
+
+    if (fread(pD, 1, d_size, fp) != d_size) return false;
+
+    currentS = -1;   /* force the scene to reload */
+    return true;
+}
+
+//从临时文件中读取场景id的S数据到内�?
 int ReadS(int id)
 {
     FILE* fp;
@@ -936,7 +1012,7 @@ int ReadS(int id)
     return 0;
 }
 
-//从内存中写入场景id的S数据到临时文件
+//从内存中写入场景id的S数据到临时文�?
 int WriteS(int id)
 {
     FILE* fp;
@@ -957,7 +1033,7 @@ int WriteS(int id)
     return 0;
 }
 
-//取s的值
+//取s的�?
 int JY_GetS(int id, int x, int y, int level)
 {
     int s;
@@ -983,7 +1059,7 @@ int JY_GetS(int id, int x, int y, int level)
     return *(pS + s);
 }
 
-//存S的值
+//存S的�?
 int JY_SetS(int id, int x, int y, int level, int v)
 {
     FILE* fp;
@@ -1069,7 +1145,7 @@ int JY_DrawSMap(int sceneid, int x, int y, int xoff, int yoff, int Mypic)
 
     SDL_Rect rect;
 
-    //无酒不欢：修复一下sceneid范围错误的问题
+    //无酒不欢：修复一下sceneid范围错误的问�?
     if (sceneid < 0 || sceneid >= S_Num)
     {
         JY_Error("DrawSMap error: sceneid=%d out of range!\n", sceneid);
@@ -1168,15 +1244,15 @@ int JY_DrawSMap(int sceneid, int x, int y, int xoff, int yoff, int Mypic)
 }
 
 //加载战斗地图
-// WarIDXfilename/WarGRPfilename 战斗地图idx/grp文件名
+// WarIDXfilename/WarGRPfilename 战斗地图idx/grp文件�?
 // mapid 战斗地图编号
 // num 战斗地图数据层数   应为6
-//         0层 地面数据
-//         1层 建筑
-//         2层 战斗人战斗编号
-//         3层 移动时显示可移动的位置
-//         4层 命中效果
-//         5层 战斗人对应的贴图
+//         0�? 地面数据
+//         1�? 建筑
+//         2�? 战斗人战斗编�?
+//         3�? 移动时显示可移动的位�?
+//         4�? 命中效果
+//         5�? 战斗人对应的贴图
 // x_max,x_max   地图大小
 int JY_LoadWarMap(const char* WarIDXfilename, const char* WarGRPfilename, int mapid, int num, int x_max, int y_max)
 {
@@ -1201,7 +1277,7 @@ int JY_LoadWarMap(const char* WarIDXfilename, const char* WarGRPfilename, int ma
         return 0;
     }
 
-    if (mapid == 0)    //第0个地图，从0开始读
+    if (mapid == 0)    //�?0个地图，�?0开始读
     {
         p = 0;
     }
@@ -1235,7 +1311,7 @@ int JY_UnloadWarMap()
     return 0;
 }
 
-//取战斗地图数据
+//取战斗地图数�?
 int JY_GetWarMap(int x, int y, int level)
 {
     int s;
@@ -1249,7 +1325,7 @@ int JY_GetWarMap(int x, int y, int level)
     return *(pWar + s);
 }
 
-//存战斗地图数据
+//存战斗地图数�?
 int JY_SetWarMap(int x, int y, int level, int v)
 {
     int s;
@@ -1267,7 +1343,7 @@ int JY_SetWarMap(int x, int y, int level, int v)
     return 0;
 }
 
-//设置某层战斗地图为给定值
+//设置某层战斗地图为给定�?
 int JY_CleanWarMap(int level, int v)
 {
     short* p = pWar + War_XMax * War_YMax * level;
@@ -1282,8 +1358,8 @@ int JY_CleanWarMap(int level, int v)
 
 // 绘制战斗地图
 // flag=0  绘制基本战斗地图
-//     =1  显示可移动的路径，(v1,v2)当前移动坐标，白色背景(雪地战斗)
-//     =2  显示可移动的路径，(v1,v2)当前移动坐标，黑色背景
+//     =1  显示可移动的路径�?(v1,v2)当前移动坐标，白色背�?(雪地战斗)
+//     =2  显示可移动的路径�?(v1,v2)当前移动坐标，黑色背�?
 //     =3  命中的人物用白色轮廓显示
 //     =4  战斗动作动画  v1 战斗人物pic, v2贴图所属的加载文件id
 //                       v3 武功效果pic  -1表示没有武功效果

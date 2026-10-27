@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include "esp_heap_caps.h"
 
 #define TSF_IMPLEMENTATION
 #define TML_IMPLEMENTATION
@@ -46,6 +47,13 @@ static tml_message *g_midi_list = NULL;   // full event list (for tml_free)
 static tml_message *g_midi_next = NULL;   // next unprocessed event
 static double g_midi_ms = 0.0;
 static bool g_midi_playing = false;
+static FILE *g_wav_music_fp = NULL;      // streaming pre-rendered WAV music
+static uint32_t g_wav_music_data_start = 0;
+static uint32_t g_wav_music_data_len = 0;
+static uint32_t g_wav_music_pos = 0;
+static uint16_t g_wav_music_channels = 1;
+static uint32_t g_wav_music_rate = 16000;
+static char *g_wav_music_buf = NULL;   // PSRAM read buffer (freed on close)
 static uint8_t g_music_volume = 100;
 
 // Mix buffers (only touched by the audio task)
@@ -237,6 +245,8 @@ static void midi_render(float *out, int frames)
     }
 }
 
+static void render_wav_music(float *out, int frames);
+
 static void audio_task(void *arg)
 {
     (void)arg;
@@ -247,8 +257,11 @@ static void audio_task(void *arg)
         // from the main thread touch the same state).
         rg_mutex_take(g_audio_lock, 100);
 
-        // 1) Render MIDI into the float mix buffer.
-        midi_render(g_fmix, AUDIO_FRAMES_PER_BUF);
+        // 1) Music: stream pre-rendered WAV if present, else render MIDI.
+        if (g_wav_music_fp)
+            render_wav_music(g_fmix, AUDIO_FRAMES_PER_BUF);
+        else
+            midi_render(g_fmix, AUDIO_FRAMES_PER_BUF);
 
         // 1b) Apply music volume to the MIDI portion only.
         float music_scale = g_music_volume / 100.0f;
@@ -287,6 +300,98 @@ static void audio_task(void *arg)
         }
 
         rg_audio_submit((rg_audio_frame_t *)g_smix, AUDIO_FRAMES_PER_BUF);
+    }
+}
+
+static void close_wav_music(void)
+{
+    if (g_wav_music_fp) { fclose(g_wav_music_fp); g_wav_music_fp = NULL; }
+    if (g_wav_music_buf) { heap_caps_free(g_wav_music_buf); g_wav_music_buf = NULL; }
+}
+
+static int play_wav_music(const char *filename)
+{
+    close_wav_music();
+
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) return -1;
+
+    // Large read buffer in PSRAM (32KB): far fewer SD reads, so scene loads
+    // (which hammer the SD) won't starve the audio and cause pops/stutter.
+    // PSRAM keeps it out of the S3's tight internal RAM.
+    g_wav_music_buf = (char *)heap_caps_malloc(32768, MALLOC_CAP_SPIRAM);
+    if (g_wav_music_buf)
+        setvbuf(fp, g_wav_music_buf, _IOFBF, 32768);
+
+    unsigned char hdr[12];
+    if (fread(hdr, 1, 12, fp) != 12 || memcmp(hdr, "RIFF", 4) || memcmp(hdr + 8, "WAVE", 4)) {
+        fclose(fp); return -1;
+    }
+
+    uint32_t data_start = 0, data_len = 0;
+    int found = 0;
+    while (!found) {
+        unsigned char chunk[8];
+        if (fread(chunk, 1, 8, fp) != 8) break;
+        uint32_t csize = chunk[4] | ((uint32_t)chunk[5] << 8) | ((uint32_t)chunk[6] << 16) | ((uint32_t)chunk[7] << 24);
+        if (!memcmp(chunk, "data", 4)) {
+            data_start = (uint32_t)ftell(fp);
+            data_len = csize;
+            found = 1;
+            break;
+        }
+        if (!memcmp(chunk, "fmt ", 4)) {
+            unsigned char fmt_data[16];
+            size_t got = fread(fmt_data, 1, 16, fp);
+            if (got >= 4)
+                g_wav_music_channels = fmt_data[2] | ((uint16_t)fmt_data[3] << 8);
+            if (got >= 8)
+                g_wav_music_rate = fmt_data[4] | ((uint32_t)fmt_data[5] << 8) | ((uint32_t)fmt_data[6] << 16) | ((uint32_t)fmt_data[7] << 24);
+            fseek(fp, (long)csize - (long)got, SEEK_CUR);
+            continue;
+        }
+        fseek(fp, (long)csize, SEEK_CUR);
+    }
+    if (!found) { fclose(fp); return -1; }
+
+    g_wav_music_fp = fp;
+    g_wav_music_data_start = data_start;
+    g_wav_music_data_len = data_len;
+    g_wav_music_pos = 0;
+    RG_LOGI("Audio: wav music %s ch=%u rate=%u data=%u bytes\n", filename, (unsigned int)g_wav_music_channels, (unsigned int)g_wav_music_rate, (unsigned int)data_len);
+    return 0;
+}
+
+static void render_wav_music(float *out, int frames)
+{
+    memset(out, 0, (size_t)frames * 2 * sizeof(float));
+    if (!g_wav_music_fp) return;
+
+    for (int i = 0; i < frames; i++)
+    {
+        if (g_wav_music_pos >= g_wav_music_data_len)   /* loop */
+        {
+            fseek(g_wav_music_fp, (long)g_wav_music_data_start, SEEK_SET);
+            g_wav_music_pos = 0;
+        }
+        if (g_wav_music_channels >= 2)
+        {
+            int16_t l, r;
+            if (fread(&l, 2, 1, g_wav_music_fp) != 1) break;
+            if (fread(&r, 2, 1, g_wav_music_fp) != 1) break;
+            out[i * 2] = (float)l / 32768.0f;
+            out[i * 2 + 1] = (float)r / 32768.0f;
+            g_wav_music_pos += 4;
+        }
+        else
+        {
+            int16_t s;
+            if (fread(&s, 2, 1, g_wav_music_fp) != 1) break;
+            float v = (float)s / 32768.0f;
+            out[i * 2] = v;
+            out[i * 2 + 1] = v;
+            g_wav_music_pos += 2;
+        }
     }
 }
 
@@ -384,11 +489,23 @@ int Audio::PlayMIDI(const char *filename)
     g_midi_next = NULL;
     g_midi_playing = false;
     midi_stop_notes();
+    close_wav_music();
 
     rg_mutex_give(g_audio_lock);
 
     if (!filename || !filename[0])
         return -1;
+
+    // Prefer a pre-rendered WAV (same basename, .wav) so we don't need the 5.7MB SoundFont.
+    char wav_path[RG_PATH_MAX + 1];
+    snprintf(wav_path, sizeof(wav_path), "%s", filename);
+    char *dot = strrchr(wav_path, '.');
+    if (dot) strcpy(dot, ".wav");
+    if (play_wav_music(wav_path) == 0)
+    {
+        RG_LOGI("Audio: streaming %s\n", wav_path);
+        return 0;
+    }
 
     load_soundfont();   // lazy load (5.7 MB) on first music playback
     if (!g_font)
@@ -412,6 +529,7 @@ int Audio::StopMIDI()
     rg_mutex_take(g_audio_lock, 100);
     g_midi_playing = false;
     midi_stop_notes();
+    close_wav_music();
     rg_mutex_give(g_audio_lock);
     return 0;
 }

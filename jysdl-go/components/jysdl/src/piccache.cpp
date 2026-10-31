@@ -168,6 +168,34 @@ bool ParseIndexTextLine(const std::string& line, int& image_number, int& x_offse
 }
 
 EXT_RAM_BSS_ATTR PicFileCache pic_file[PIC_FILE_NUM];
+extern int g_MAXCacheNum;
+static Uint32 g_cache_tick = 0;
+static int g_cache_count = 0;
+
+static void evict_lru()
+{
+    CacheNode* oldest = NULL;
+    int oldest_file = -1, oldest_pic = -1;
+    for (int f = 0; f < PIC_FILE_NUM; f++)
+    {
+        for (int p = 0; p < (int)pic_file[f].pcache.size(); p++)
+        {
+            CacheNode* c = pic_file[f].pcache[p];
+            if (c && (!oldest || c->last_use < oldest->last_use))
+            {
+                oldest = c;
+                oldest_file = f;
+                oldest_pic = p;
+            }
+        }
+    }
+    if (oldest)
+    {
+        delete oldest;
+        pic_file[oldest_file].pcache[oldest_pic] = NULL;
+        g_cache_count--;
+    }
+}
 //std::forward_list<CacheNode*> pic_cache;     //pic_cache链表
 Uint32 m_color32[256];    // 256调色板
 
@@ -231,6 +259,7 @@ int JY_PicInit(const char* PalletteFilename)
             delete p;
         }
         pic_file[i].pcache.clear();
+        g_cache_count = 0;
         //SafeFree(pic_file[i].pcache);
         if (pic_file[i].fp)
         {
@@ -417,11 +446,25 @@ int JY_LoadPic(int fileid, int picid, int x, int y, int flag, int value, int col
         //    //SDL_SetSurfaceColorKey(newcache->s, true, ConvertColor(g_MaskColor32));  //透明色
         //    SDL_DestroySurface(tmpsur);
         //}
-        pic_file[fileid].pcache[picid] = newcache;
+        if (newcache->t == NULL)
+        {
+            delete newcache;   /* load failed: do not cache, retry next time */
+        }
+        else
+        {
+            pic_file[fileid].pcache[picid] = newcache;
+            newcache->last_use = ++g_cache_tick;
+            g_cache_count++;
+            if (g_MAXCacheNum > 0 && g_cache_count > g_MAXCacheNum)
+            {
+                evict_lru();
+            }
+        }
     }
     else
     {
         newcache = pic_file[fileid].pcache[picid];
+        newcache->last_use = ++g_cache_tick;
     }
 
     if (newcache->t == NULL)    //贴图为空，直接退出
@@ -514,6 +557,11 @@ int LoadPic(int fileid, int picid, struct CacheNode* cache)
         {
             fseek(pic_file[fileid].fp, id1, SEEK_SET);
             data = (unsigned char*)malloc(datalong);
+            if (data == NULL)
+            {
+                JY_Error("LoadPic: cannot malloc data memory (%d bytes)!\n", datalong);
+                return 1;
+            }
             p = data;
             fread(data, 1, datalong, pic_file[fileid].fp);
         }
@@ -670,11 +718,16 @@ SDL_Texture* CreateTextureFromRLE(unsigned char* data, int w, int h, int datalon
     if (ps1 == NULL)
     {
         JY_Error("CreatePicSurface32: cannot create SDL_Surface ps1!\n");
+        SafeFree(data32);
+        return NULL;
     }
     ps2 = SDL_ConvertSurface(ps1, g_Surface->format);
     if (ps2 == NULL)
     {
         JY_Error("CreatePicSurface32: cannot create SDL_Surface ps2!\n");
+        SDL_DestroySurface(ps1);
+        SafeFree(data32);
+        return NULL;
     }
     auto tex = SDL_CreateTextureFromSurface(g_Renderer, ps2);
     SDL_DestroySurface(ps1);

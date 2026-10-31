@@ -1,6 +1,6 @@
 
-// 主程序
-// 本程序为游泳的鱼编写。
+// 主程�?
+// 本程序为游泳的鱼编写�?
 // 版权所无，您可以以任何方式使用代码
 
 #include "jymain.h"
@@ -33,37 +33,37 @@ SDL_Texture* g_Texture = NULL;
 SDL_Texture* g_TextureShow = NULL;
 SDL_Texture* g_TextureTmp = NULL;
 
-SDL_Surface* g_Surface = NULL;        // 游戏使用的视频表面
-Uint32 g_MaskColor32 = 0xff706020;    // 透明色
+SDL_Surface* g_Surface = NULL;        // 游戏使用的视频表�?
+Uint32 g_MaskColor32 = 0xff706020;    // 透明�?
 
 int g_Rotate = 0;       //屏幕是否旋转
 int g_ScreenW = 800;    // 屏幕宽高
 int g_ScreenH = 600;
 int g_ScreenBpp = 16;    // 屏幕色深
 int g_FullScreen = 0;
-int g_EnableSound = 1;     // 声音开关 0 关闭 1 打开
+int g_EnableSound = 1;     // 声音开�? 0 关闭 1 打开
 int g_MusicVolume = 32;    // 音乐声音大小
 int g_SoundVolume = 32;    // 音效声音大小
-int g_SwitchABXY = 0;      // 调换AB键，0为不调换，1为调换
+int g_SwitchABXY = 0;      // 调换AB键，0为不调换�?1为调�?
 
-int g_XScale = 18;    //贴图x,y方向一半大小
+int g_XScale = 18;    //贴图x,y方向一半大�?
 int g_YScale = 9;
 
-//各个地图绘制时xy方向需要多绘制的余量。保证可以全部显示
+//各个地图绘制时xy方向需要多绘制的余量。保证可以全部显�?
 int g_MMapAddX;
 int g_MMapAddY;
 int g_SMapAddX;
 int g_SMapAddY;
 int g_WMapAddX;
 int g_WMapAddY;
-int g_MAXCacheNum = 1000;    //最大缓存数量
+int g_MAXCacheNum = 1000;    //最大缓存数�?
 int g_LoadFullS = 1;         //是否全部加载S文件
 int g_LoadMMapType = 0;      //是否全部加载M文件
 int g_LoadMMapScope = 0;
 int g_IsDebug = 0;           //是否打开调试日志
-char g_MainLuaFile[255];     //lua主脚本文件
+char g_MainLuaFile[255];     //lua主脚本文�?
 int g_MP3 = 0;               //是否使用MP3格式音乐
-char g_MidSF2[255];          //MIDI音色库文件路径
+char g_MidSF2[255];          //MIDI音色库文件路�?
 float g_Zoom = 1;            //图片缩放比例
 char g_Softener[255];        //柔化滤镜名称
 int g_DelayTimes;            //延迟帧数
@@ -335,7 +335,7 @@ static int HAPI_LoadState(lua_State *pL)
     return 1;
 }
 
-//定义的lua接口函数名
+//定义的lua接口函数�?
 const struct luaL_Reg jylib[] = {
     { "Debug", HAPI_Debug },
 
@@ -440,12 +440,12 @@ void GetModes(int* width, int* height)
         return;
     }
 
-    //宽
+    //�?
     memset(buf, 0, 10);
     fgets(buf, 10, fp);
     *width = atoi(buf);
 
-    //高
+    //�?
     memset(buf, 0, 10);
     fgets(buf, 10, fp);
     *height = atoi(buf);
@@ -455,7 +455,7 @@ void GetModes(int* width, int* height)
     fclose(fp);
 }
 
-// 主程序
+// 主程�?
 extern "C" int jysdl_main(int argc, char* argv[])
 {
 #ifdef _WIN32
@@ -464,12 +464,12 @@ extern "C" int jysdl_main(int argc, char* argv[])
     //lua_State* pL_main;
     srand(time(0));
 
-    // 初始化 SDL 日志优先级和文件输出
+    // 初始�? SDL 日志优先级和文件输出
     SDL_SetLogPriorities(SDL_LOG_PRIORITY_DEBUG);
     if (JY_OpenLogFiles() != 0)
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "cannot open %s or %s", DEBUG_FILE, ERROR_FILE);
 
-    rg_task_create("jywatch", jy_watchdog_task, NULL, 3 * 1024, 0, 3, 0);
+    //rg_task_create("jywatch", jy_watchdog_task, NULL, 3 * 1024, 0, 3, 0);
 
     pL_main = luaL_newstate();
     luaL_openlibs(pL_main);
@@ -487,16 +487,16 @@ extern "C" int jysdl_main(int argc, char* argv[])
 
     JY_Debug("JY_CurrentPath='%s'", JY_CurrentPath);
     JY_Debug("Lua_Config();");
-    Lua_Config(pL_main, _(CONFIG_FILE));    //读取lua配置文件，设置参数
+    Lua_Config(pL_main, _(CONFIG_FILE));    //读取lua配置文件，设置参�?
 
     JY_Debug("InitSDL();");
     InitSDL();    //初始化SDL
 
     JY_Debug("InitGame();");
-    InitGame();    //初始化游戏数据
+    InitGame();    //初始化游戏数�?
 
     JY_Debug("Lua_Main();");
-    Lua_Main(pL_main);    //调用Lua主函数，开始游戏
+    Lua_Main(pL_main);    //调用Lua主函数，开始游�?
 
     JY_Debug("ExitGame();");
     ExitGame();    //释放游戏数据
@@ -513,7 +513,7 @@ extern "C" int jysdl_main(int argc, char* argv[])
     return 0;
 }
 
-//Lua主函数
+//Lua主函�?
 int Lua_Main(lua_State* pL_main)
 {
     int result = 0;
@@ -594,7 +594,7 @@ int Lua_Config(lua_State* pL, const char* filename)
         lua_pop(pL, 1);
     }
 
-    lua_getglobal(pL, "CONFIG");    //读取config定义的值
+    lua_getglobal(pL, "CONFIG");    //读取config定义的�?
 
     // ESP-IDF has no chdir()/getcwd() (always "/"), so rewrite the CONFIG's relative
     // paths ("./data/", "./script/", ...) to absolute paths rooted at JY_CurrentPath.
@@ -664,7 +664,7 @@ int Lua_Config(lua_State* pL, const char* filename)
     return 0;
 }
 
-//读取lua表中的整型
+//读取lua表中的整�?
 int getfield(lua_State* pL, const char* key)
 {
     int result;
@@ -687,7 +687,7 @@ int getfieldstr(lua_State* pL, const char* key, char* str)
 
 // ============ 通用工具函数 ============
 
-// 输出调试信息到 debug.log
+// 输出调试信息�? debug.log
 int JY_Debug_Impl(const char* file, int line, const char* func, const char* fmt, ...)
 {
     va_list argptr;
@@ -697,7 +697,7 @@ int JY_Debug_Impl(const char* file, int line, const char* func, const char* fmt,
     return ret;
 }
 
-// 输出错误信息到 error.log
+// 输出错误信息�? error.log
 int JY_Error_Impl(const char* file, int line, const char* func, const char* fmt, ...)
 {
     va_list argptr;
@@ -723,18 +723,18 @@ int limitX(int x, int xmin, int xmax)
 
 int FileExists(const char* name)
 {
-    // 检查文件是否存在
+    // 检查文件是否存�?
     if (strlen(name) == 0)
     {
-        return 0;    // 空字符串不代表文件
+        return 0;    // 空字符串不代表文�?
     }
 
-    // 使用stat函数检查文件状态
+    // 使用stat函数检查文件状�?
     struct stat buffer;
     return (stat(name, &buffer) == 0);
 }
 
-// 返回文件长度，若为0，则文件可能不存在
+// 返回文件长度，若�?0，则文件可能不存�?
 int FileLength(const char* filename)
 {
     FILE* f;

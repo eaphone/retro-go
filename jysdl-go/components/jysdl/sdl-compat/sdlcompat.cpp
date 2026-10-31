@@ -408,9 +408,11 @@ SDL_Surface *SDL_CreateSurface(int w, int h, SDL_PixelFormat format)
 {
     (void)format;
     SDL_Surface *s = (SDL_Surface *)calloc(1, sizeof(*s));
+    if (!s) return NULL;
     s->w = w; s->h = h;
     s->pitch = w * 4;
     s->pixels = calloc((size_t)w * h, 4);
+    if (!s->pixels) { free(s); return NULL; }
     s->format = &g_format_argb;
     s->clip_rect.x = 0; s->clip_rect.y = 0; s->clip_rect.w = w; s->clip_rect.h = h;
     s->has_color_key = false;
@@ -423,6 +425,7 @@ SDL_Surface *SDL_CreateSurfaceFrom(int w, int h, SDL_PixelFormat format, void *p
 {
     (void)format; (void)pitch;
     SDL_Surface *s = (SDL_Surface *)calloc(1, sizeof(*s));
+    if (!s) return NULL;
     s->w = w; s->h = h;
     s->pitch = w * 4;
     s->pixels = pixels;
@@ -453,6 +456,7 @@ SDL_Surface *SDL_ConvertSurface(SDL_Surface *surface, SDL_PixelFormatSDL2 *forma
     if (!surface) return NULL;
     /* Everything is 32-bit ARGB in our shim, so a convert is a copy. */
     SDL_Surface *s = SDL_CreateSurface(surface->w, surface->h, SDL_PIXELFORMAT_ARGB8888);
+    if (!s) return NULL;
     memcpy(s->pixels, surface->pixels, (size_t)surface->w * surface->h * 4);
     s->has_color_key = surface->has_color_key;
     s->color_key = surface->color_key;

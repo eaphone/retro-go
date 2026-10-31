@@ -37,6 +37,7 @@ struct CacheNode                         //贴图cache链表节点
     int yoff = 0;
     int id;                                     //贴图编号
     int fileid;                                 //贴图文件编号
+    Uint32 last_use = 0;
 };
 
 struct PicFileCache                             //贴图文件链表节点

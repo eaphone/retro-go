@@ -339,6 +339,7 @@ bool SDL_GetRenderClipRect(SDL_Renderer *renderer, SDL_Rect *rect)
 SDL_Texture *SDL_CreateTexture(SDL_Renderer *renderer, SDL_PixelFormat format, SDL_TextureAccess access, int w, int h)
 {
     (void)renderer;
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) return NULL;
     SDL_Texture *t = (SDL_Texture *)calloc(1, sizeof(*t));
     if (!t) return NULL;
     t->format = format;

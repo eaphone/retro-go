@@ -1470,11 +1470,11 @@ int JY_DrawWarMap(int flag, int x, int y, int v1, int v2, int v3, int v4, int v5
                         }
                         if ((xx == v1) && (yy == v2))
                         {
-                            JY_LoadPic(0, 0, x1, y1 - d4, showflag, 128, 0, 27, 14);
+                            JY_LoadPic(0, 0, x1, y1 - d4, showflag, 128);
                         }
                         else
                         {
-                            JY_LoadPic(0, 0, x1, y1 - d4, showflag, 64, 0, 27, 14);
+                            JY_LoadPic(0, 0, x1, y1 - d4, showflag, 64);
                         }
                     }
                 }

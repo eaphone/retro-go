@@ -465,7 +465,9 @@ int ResumeMIDI()
 
 int JY_PlayWAV(const char* filename)
 {
-    return Audio::getInstance()->PlayWAV(filename);
+    int _r = Audio::getInstance()->PlayWAV(filename);
+    printf("[SFX] JY_PlayWAV('%s') -> %d\n", filename ? filename : "(null)", _r);
+    return _r;
 }
 
 int JY_SetSound(int id, int flag)

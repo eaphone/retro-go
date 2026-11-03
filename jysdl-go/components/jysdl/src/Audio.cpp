@@ -446,7 +446,8 @@ int Audio::PlayWAV(const char *filename)
 
     uint32_t len = 0;
     int16_t *data = decode_wav(filename, &len);
-    if (!data) return -1;
+    if (!data) { printf("[SFX] decode_wav failed: '%s'\n", filename); return -1; }
+    printf("[SFX] decode_wav ok: '%s' len=%u\n", filename, (unsigned)len);
 
     rg_mutex_take(g_audio_lock, 100);
 

@@ -172,7 +172,7 @@ extern int g_MAXCacheNum;
 static Uint32 g_cache_tick = 0;
 static int g_cache_count = 0;
 
-static void evict_lru()
+static void evict_lru(CacheNode* skip)
 {
     CacheNode* oldest = NULL;
     int oldest_file = -1, oldest_pic = -1;
@@ -181,6 +181,7 @@ static void evict_lru()
         for (int p = 0; p < (int)pic_file[f].pcache.size(); p++)
         {
             CacheNode* c = pic_file[f].pcache[p];
+            if (c == skip) continue;   /* never evict the node in use */
             if (c && (!oldest || c->last_use < oldest->last_use))
             {
                 oldest = c;
@@ -449,16 +450,14 @@ int JY_LoadPic(int fileid, int picid, int x, int y, int flag, int value, int col
         if (newcache->t == NULL)
         {
             delete newcache;   /* load failed: do not cache, retry next time */
+            return 1;          /* newcache is freed: must not touch it again */
         }
-        else
+        pic_file[fileid].pcache[picid] = newcache;
+        newcache->last_use = ++g_cache_tick;
+        g_cache_count++;
+        if (g_MAXCacheNum > 0 && g_cache_count > g_MAXCacheNum)
         {
-            pic_file[fileid].pcache[picid] = newcache;
-            newcache->last_use = ++g_cache_tick;
-            g_cache_count++;
-            if (g_MAXCacheNum > 0 && g_cache_count > g_MAXCacheNum)
-            {
-                evict_lru();
-            }
+            evict_lru(newcache);
         }
     }
     else
@@ -644,6 +643,12 @@ int JY_GetPicXY(int fileid, int picid, int* w, int* h, int* xoff, int* yoff)
 //按照原来游戏的RLE格式创建表面
 SDL_Texture* CreateTextureFromRLE(unsigned char* data, int w, int h, int datalong)
 {
+    /* bad/corrupt pic header -> huge w*h would overflow malloc and corrupt heap */
+    if (data == NULL || w <= 0 || h <= 0 || w > 2048 || h > 2048)
+    {
+        JY_Error("CreateTextureFromRLE: invalid size %dx%d\n", w, h);
+        return NULL;
+    }
     int p = 0;
     int i, j;
     int yoffset;
@@ -669,6 +674,7 @@ SDL_Texture* CreateTextureFromRLE(unsigned char* data, int w, int h, int datalon
     for (i = 0; i < h; i++)
     {
         yoffset = i * w;
+        if (p >= datalong) break;
         row = data[p];    // i行数据个数
         start = p;
         p++;
@@ -677,6 +683,7 @@ SDL_Texture* CreateTextureFromRLE(unsigned char* data, int w, int h, int datalon
             x = 0;    // i行目前列
             for (;;)
             {
+                if (p >= datalong) break;
                 x = x + data[p];    // i行空白点个数，跳个透明点
                 if (x >= w)         // i行宽度到头，结束
                 {
@@ -684,10 +691,12 @@ SDL_Texture* CreateTextureFromRLE(unsigned char* data, int w, int h, int datalon
                 }
 
                 p++;
+                if (p >= datalong) break;
                 solidnum = data[p];    // 不透明点个数
                 p++;
                 for (j = 0; j < solidnum; j++)
                 {
+                    if (x >= w || p >= datalong) break;
                     if (g_Rotate == 0)
                     {
                         data32[yoffset + x] = m_color32[data[p]] | AMASK;

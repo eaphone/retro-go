@@ -71,6 +71,7 @@
 #define RG_SCREEN_ROTATE            0
 #define RG_SCREEN_VISIBLE_AREA      {0, 0, 0, 0}
 #define RG_SCREEN_SAFE_AREA         {0, 0, 0, 0}
+#define LCD_PANEL_TK024F3089        1  // use 3089. else 3036
 /* Panel tuning notes (all values below come from the TK024F3036 vendor demo):
  *  0xC3 VRHS     0x15 = 4.6V.  0x1B / 0x1F -> brighter, more contrast.
  *  0xD0 PWCTRL1  0xA4,0xA1.  Second byte 0x71 (VDDS 0.8V) -> more contrast.
@@ -80,15 +81,37 @@
  *  0x20 / 0x21   INVOFF / INVON. Use 0x21 if the picture is a photo negative.
  *  0x36 MADCTL   0x60 = MX+MV.  Use 0xE0 (adds MY) if the image is upside down.
  */
+#if LCD_PANEL_TK024F3089==1
 #define RG_SCREEN_INIT()                                                                                         \
-    /* Full vendor sequence for TK024F3036 (ST7789S). Ported from the vendor demo */                             \
-    /* ESP32S3_TK024F3036_LVGL_9.2.0/components/LCD_TK024F3036/LCD_TK024F3036.c.  */                             \
-    /* The old sequence only set MADCTL/COLMOD, so VCOM, gate voltages, VRH/VDV  */                              \
-    /* and both gamma tables stayed at their power-on defaults: dull, washed out. */                             \
+    /* Full vendor sequence for TK024F3089 (ST7789S), from the vendor demo */                                   \
     rg_task_delay(120);                                                                                          \
     ILI9341_CMD(0x11);                               /* Sleep out */                                             \
     rg_task_delay(120);                                                                                          \
-    ILI9341_CMD(0x36, 0x60);                         /* MADCTL: MX=1,MV=1, RGB order (|0x08 = BGR) */            \
+    ILI9341_CMD(0x36, 0x60);                         /* MADCTL: MX=1,MV=1, RGB order */                           \
+    ILI9341_CMD(0x3A, 0x05);                         /* COLMOD: 16bit RGB565 */                                  \
+    ILI9341_CMD(0xB0, 0x00, 0xF8);                   /* RAMCTRL: big-endian RGB565 */                            \
+    ILI9341_CMD(0xB2, 0x1F, 0x1F, 0x00, 0x33, 0x33); /* PORCTRL */                                               \
+    ILI9341_CMD(0xB7, 0x12);                         /* GATE: VGH=12.54V, VGL=-8.23V */                          \
+    ILI9341_CMD(0xBB, 0x66);                         /* VCOM */                                                  \
+    ILI9341_CMD(0xC0, 0x2C);                         /* LCMCTRL */                                               \
+    ILI9341_CMD(0xC2, 0x01);                         /* VDVVRHEN */                                              \
+    ILI9341_CMD(0xC3, 0x15);                         /* VRHS 4.6V  <- contrast knob */                           \
+    ILI9341_CMD(0xC4, 0x20);                         /* VDVS 0V */                                               \
+    ILI9341_CMD(0xC6, 0x13);                         /* FRCTRL2 */                                               \
+    ILI9341_CMD(0xD0, 0xA4, 0xA1);                   /* PWCTRL1    <- contrast knob */                           \
+    ILI9341_CMD(0xD6, 0xA1);                         /* gate output GND while asleep */                          \
+    ILI9341_CMD(0xE0, 0xF0, 0x06, 0x0D, 0x0B, 0x0A, 0x07, 0x2E, 0x43, 0x45, 0x38, 0x14, 0x13, 0x25, 0x29);  /* gamma + */ \
+    ILI9341_CMD(0xE1, 0xF0, 0x07, 0x0A, 0x08, 0x07, 0x23, 0x2E, 0x33, 0x44, 0x3A, 0x16, 0x17, 0x26, 0x2C);  /* gamma - */ \
+    ILI9341_CMD(0x21);                               /* INVOFF (0x21 for 3089) */                                 \
+    rg_task_delay(50);                                                                                           \
+    ILI9341_CMD(0x29);                               /* Display on */
+#else
+#define RG_SCREEN_INIT()                                                                                         \
+    /* TK024F3036 variant */                                                                                     \
+    rg_task_delay(120);                                                                                          \
+    ILI9341_CMD(0x11);                               /* Sleep out */                                             \
+    rg_task_delay(120);                                                                                          \
+    ILI9341_CMD(0x36, 0x60);                         /* MADCTL: MX=1,MV=1, RGB order */                           \
     ILI9341_CMD(0x3A, 0x55);                         /* COLMOD: 16bit RGB565 */                                  \
     ILI9341_CMD(0xB0, 0x00, 0xF0);                   /* RAMCTRL: big-endian RGB565 */                            \
     ILI9341_CMD(0xB2, 0x1F, 0x1F, 0x00, 0x33, 0x33); /* PORCTRL */                                               \
@@ -103,8 +126,10 @@
     ILI9341_CMD(0xD6, 0xA1);                         /* gate output GND while asleep */                          \
     ILI9341_CMD(0xE0, 0xF0, 0x06, 0x0D, 0x0B, 0x0A, 0x07, 0x2E, 0x43, 0x45, 0x38, 0x14, 0x13, 0x25, 0x29);  /* gamma + */ \
     ILI9341_CMD(0xE1, 0xF0, 0x07, 0x0A, 0x08, 0x07, 0x23, 0x2E, 0x33, 0x44, 0x3A, 0x16, 0x17, 0x26, 0x2C);  /* gamma - */ \
-    ILI9341_CMD(0x20);                               /* INVOFF (use 0x21 for a negative image) */                \
-    rg_task_delay(50);
+    ILI9341_CMD(0x20);                               /* INVOFF */                                                \
+    rg_task_delay(50);                                                                                           \
+    ILI9341_CMD(0x29);                               /* Display on */
+#endif
 
 /****************************************************************************
  * Input                                                                    *
